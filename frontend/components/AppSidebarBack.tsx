@@ -2,7 +2,6 @@
 
 import {
   LogOut,
-  Folder,
   Upload,
   UserPlus,
   LayoutDashboard,

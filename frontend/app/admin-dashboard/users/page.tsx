@@ -66,8 +66,8 @@ export default function UsersPage() {
             : user,
         ),
       );
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     }
   };
 
@@ -90,8 +90,8 @@ export default function UsersPage() {
             : user,
         ),
       );
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     }
   };
 

@@ -37,8 +37,8 @@ export default function RegisterPage() {
       alert(res.message);
 
       router.push("/login");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }

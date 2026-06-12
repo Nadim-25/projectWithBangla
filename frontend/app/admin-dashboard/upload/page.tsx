@@ -22,9 +22,9 @@ export default function UploadPage() {
 
   const [displayName, setDisplayName] = useState("");
 
-  const [division, setDivision] = useState("SME");
+  const division = "SME";
 
-  const [department, setDepartment] = useState("CRM");
+  const department = "CRM";
 
   const [loading, setLoading] = useState(false);
 
@@ -143,10 +143,10 @@ export default function UploadPage() {
       // reset
       setFile(null);
       setDisplayName("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
 
-      alert(err.message);
+      alert(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setLoading(false);
     }

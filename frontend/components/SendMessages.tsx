@@ -27,8 +27,8 @@ export default function SendMessages({ chatId, onNewMessage }: UserCardProps) {
       });
 
       setQuestion("");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }

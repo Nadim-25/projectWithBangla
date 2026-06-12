@@ -1,16 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { getChatById } from "@/helper/tokenHelper";
 import { sendMessage } from "@/helper/message";
 import { useAuth } from "@/context/AuthContext";
 
 import {
   ArrowUp,
-  ArrowLeft,
   Sparkles,
-  User,
   Copy,
   Check,
   Loader2,
@@ -62,7 +60,6 @@ function CopyButton({ text }: { text: string }) {
 
 export default function ChatPage() {
   const params = useParams();
-  const router = useRouter();
   const { user } = useAuth();
   const chatId = Number(params?.id);
 
@@ -119,8 +116,8 @@ export default function ChatPage() {
           i === prev.length - 1 ? { ...msg, answer: res.answer } : msg,
         ),
       );
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }

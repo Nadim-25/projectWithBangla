@@ -42,8 +42,8 @@ export default function AdminResetPasswordDialog({ userId }: Props) {
 
       // close dialog
       setOpen(false);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }

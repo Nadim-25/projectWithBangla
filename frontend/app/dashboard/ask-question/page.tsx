@@ -36,8 +36,8 @@ export default function AskQuestionPage() {
 
       // redirect to generated chat
       router.push(`/dashboard/chat/${res.chatId}`);
-    } catch (err: any) {
-      alert(err.message || "Failed to create chat");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to create chat");
     } finally {
       setLoading(false);
     }

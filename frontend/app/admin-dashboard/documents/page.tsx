@@ -67,8 +67,8 @@ export default function DocumentsPage() {
             : doc,
         ),
       );
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setProcessingId(null);
     }
@@ -84,8 +84,8 @@ export default function DocumentsPage() {
       await deleteDoc(id);
 
       setDocs((prev) => prev.filter((doc) => doc.id !== id));
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setDeletingId(null);
     }

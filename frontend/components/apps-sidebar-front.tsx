@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare, LogOut, Folder } from "lucide-react";
+import { MessageSquare, LogOut } from "lucide-react";
 
 import Link from "next/link";
 

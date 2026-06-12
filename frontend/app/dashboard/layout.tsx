@@ -15,17 +15,13 @@ import {
 
 import { useRouter } from "next/navigation";
 import LogoutButton from "@/components/LogoutButtons";
-import { BASE_URL } from "@/settings";
 
 export default function DashboardLayoutFront({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, logout } = useAuth();
-
-  // console.log("user....", user);
-  console.log("ENV", BASE_URL);
+  const { user } = useAuth();
   const router = useRouter();
 
   return (

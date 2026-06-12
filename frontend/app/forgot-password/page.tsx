@@ -18,8 +18,8 @@ export default function ForgotPasswordPage() {
       alert(res.message);
 
       setEmail("");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }

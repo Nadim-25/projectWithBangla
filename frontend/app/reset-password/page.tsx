@@ -18,8 +18,8 @@ function ResetPasswordForm() {
       setLoading(true);
       const res = await resetPassword({ token, password, confirmPassword });
       alert(res.message);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
       redirect("/login");

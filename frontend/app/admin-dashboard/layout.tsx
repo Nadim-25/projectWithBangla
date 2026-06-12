@@ -5,7 +5,6 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Menu, ChevronDown } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import LogoutButton from "@/components/LogoutButtons";
 
 import {
   DropdownMenu,
