@@ -1,32 +1,22 @@
 "use client";
 
+import { Suspense } from "react";
 import { redirect, useSearchParams } from "next/navigation";
-
 import { useState } from "react";
-
 import { resetPassword } from "@/helper/auth";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const params = useSearchParams();
-
   const token = params.get("token") || "";
 
   const [password, setPassword] = useState("");
-
   const [confirmPassword, setConfirmPassword] = useState("");
-
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     try {
       setLoading(true);
-
-      const res = await resetPassword({
-        token,
-        password,
-        confirmPassword,
-      });
-
+      const res = await resetPassword({ token, password, confirmPassword });
       alert(res.message);
     } catch (err: any) {
       alert(err.message);
@@ -64,5 +54,13 @@ export default function ResetPasswordPage() {
         {loading ? "Resetting..." : "Reset Password"}
       </button>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto mt-20 max-w-md">Loading...</div>}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }
