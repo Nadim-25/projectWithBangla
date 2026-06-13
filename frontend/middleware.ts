@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 // Accessible without a token
 const PUBLIC_ROUTES = [
   "/login",
-  "/registration",
+  "/register",
   "/forgot-password",
   "/reset-password",
 ];
