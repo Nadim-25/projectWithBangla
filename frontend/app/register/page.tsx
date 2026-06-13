@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
+import { User, AtSign, Mail, Lock } from "lucide-react";
 import { registerUser } from "@/helper/auth";
-
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { useFlash } from "@/context/FlashContext";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { showFlash } = useFlash();
 
   const [form, setForm] = useState({
     fullName: "",
@@ -20,110 +19,90 @@ export default function RegisterPage() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
     try {
       setLoading(true);
-
       const res = await registerUser(form);
-
-      alert(res.message);
-
+      showFlash(res.message || "Account created! Please wait for admin approval.", "success");
       router.push("/login");
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "An error occurred");
+      const msg = err instanceof Error ? err.message : "An error occurred";
+      setError(msg);
+      showFlash(msg, "error");
     } finally {
       setLoading(false);
     }
   };
 
+  const fields = [
+    { label: "Full Name", name: "fullName", type: "text", placeholder: "John Doe", icon: User },
+    { label: "Username", name: "userName", type: "text", placeholder: "johndoe", icon: AtSign },
+    { label: "Email", name: "email", type: "email", placeholder: "john@example.com", icon: Mail },
+    { label: "Password", name: "hashedPassword", type: "password", placeholder: "••••••••", icon: Lock },
+    { label: "Confirm Password", name: "confirmHashedPassword", type: "password", placeholder: "••••••••", icon: Lock },
+  ] as const;
+
   return (
-    <div className="mx-auto mt-20 max-w-md">
-      <div className="rounded-2xl border p-6 shadow-sm">
-        {/* TITLE */}
-        <div className="mb-6 space-y-1">
-          <h1 className="text-2xl font-bold">Create Account</h1>
-
-          <p className="text-sm text-muted-foreground">Register your account</p>
+    <div className="min-h-screen flex items-center justify-center bg-neutral-950 px-4 py-8">
+      <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-semibold text-white">Create Account</h1>
+          <p className="text-sm text-neutral-400 mt-1">Register to get started</p>
         </div>
 
-        {/* FORM */}
-        <div className="space-y-4">
-          {/* FULL NAME */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Full Name</label>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          {fields.map(({ label, name, type, placeholder, icon: Icon }) => (
+            <div key={name}>
+              <label className="text-xs text-neutral-400 mb-1 block">{label}</label>
+              <div className="relative">
+                <Icon
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                />
+                <input
+                  type={type}
+                  name={name}
+                  required
+                  value={form[name]}
+                  onChange={handleChange}
+                  placeholder={placeholder}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-white/20 text-sm"
+                />
+              </div>
+            </div>
+          ))}
 
-            <Input
-              name="fullName"
-              value={form.fullName}
-              onChange={handleChange}
-              placeholder="John Doe"
-            />
-          </div>
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-          {/* USERNAME */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Username</label>
-
-            <Input
-              name="userName"
-              value={form.userName}
-              onChange={handleChange}
-              placeholder="johndoe"
-            />
-          </div>
-
-          {/* EMAIL */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
-
-            <Input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              placeholder="john@example.com"
-            />
-          </div>
-
-          {/* PASSWORD */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Password</label>
-
-            <Input
-              type="password"
-              name="hashedPassword"
-              value={form.hashedPassword}
-              onChange={handleChange}
-              placeholder="********"
-            />
-          </div>
-
-          {/* CONFIRM PASSWORD */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Confirm Password</label>
-
-            <Input
-              type="password"
-              name="confirmHashedPassword"
-              value={form.confirmHashedPassword}
-              onChange={handleChange}
-              placeholder="********"
-            />
-          </div>
-
-          {/* BUTTON */}
-          <Button onClick={handleSubmit} disabled={loading} className="w-full">
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2 rounded-lg bg-white text-black font-medium hover:bg-neutral-200 transition disabled:opacity-50"
+          >
             {loading ? "Creating Account..." : "Register"}
-          </Button>
+          </button>
+        </form>
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-neutral-800" />
+          <span className="text-xs text-neutral-500">OR</span>
+          <div className="h-px flex-1 bg-neutral-800" />
         </div>
+
+        <p className="text-center text-xs text-neutral-500">
+          Already have an account?{" "}
+          <a href="/login" className="text-white hover:underline">
+            Sign in
+          </a>
+        </p>
       </div>
     </div>
   );
