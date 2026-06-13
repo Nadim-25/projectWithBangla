@@ -16,25 +16,32 @@ async def lifespan(app: FastAPI):
     # Create all SQLModel-managed tables (users, chat, message, document, etc.)
     SQLModel.metadata.create_all(engine)
 
-    # Enable pgvector and create embeddings table (idempotent)
-    with engine.connect() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS embeddings (
-                id          SERIAL PRIMARY KEY,
-                document_id INTEGER REFERENCES document(id) ON DELETE CASCADE,
-                content     TEXT NOT NULL,
-                embedding   vector(1536),
-                created_at  TIMESTAMPTZ DEFAULT NOW()
-            )
-        """))
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS embeddings_embedding_cosine_idx
-            ON embeddings
-            USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100)
-        """))
-        conn.commit()
+    # Enable pgvector extension and create embeddings table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS embeddings (
+                    id          SERIAL PRIMARY KEY,
+                    document_id INTEGER REFERENCES document(id) ON DELETE CASCADE,
+                    content     TEXT NOT NULL,
+                    embedding   vector(1536),
+                    created_at  TIMESTAMPTZ DEFAULT NOW()
+                )
+            """))
+            # IVFFlat index — skip silently if table is empty (needs data first)
+            try:
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS embeddings_embedding_cosine_idx
+                    ON embeddings
+                    USING ivfflat (embedding vector_cosine_ops)
+                    WITH (lists = 100)
+                """))
+            except Exception as e:
+                print(f"[startup] Skipping IVFFlat index (will create after data is added): {e}")
+            conn.commit()
+    except Exception as e:
+        print(f"[startup] pgvector setup warning: {e}")
     yield
 
 
