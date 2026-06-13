@@ -13,11 +13,11 @@ import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all SQLModel-managed tables (users, chat, message, document, etc.)
-    SQLModel.metadata.create_all(engine)
-
-    # Enable pgvector extension and create embeddings table
     try:
+        # Create all SQLModel-managed tables (users, chat, message, document, etc.)
+        SQLModel.metadata.create_all(engine)
+
+        # Enable pgvector extension and create embeddings table
         with engine.connect() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.execute(text("""
@@ -29,7 +29,6 @@ async def lifespan(app: FastAPI):
                     created_at  TIMESTAMPTZ DEFAULT NOW()
                 )
             """))
-            # IVFFlat index — skip silently if table is empty (needs data first)
             try:
                 conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS embeddings_embedding_cosine_idx
@@ -37,11 +36,11 @@ async def lifespan(app: FastAPI):
                     USING ivfflat (embedding vector_cosine_ops)
                     WITH (lists = 100)
                 """))
-            except Exception as e:
-                print(f"[startup] Skipping IVFFlat index (will create after data is added): {e}")
+            except Exception as idx_err:
+                print(f"[startup] IVFFlat index skipped: {idx_err}")
             conn.commit()
     except Exception as e:
-        print(f"[startup] pgvector setup warning: {e}")
+        print(f"[startup] DB setup warning (app will still start): {e}")
     yield
 
 
