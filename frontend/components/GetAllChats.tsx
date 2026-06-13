@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { getToken } from "@/helper/tokenHelper";
-
-const BASE_URL = "http://127.0.0.1:8000";
+import { BASE_URL } from "@/settings";
 
 type Chat = {
   chatId: number;
@@ -18,6 +17,8 @@ export default function GetAllChats() {
   const token = getToken();
 
   useEffect(() => {
+    if (!token) return;
+
     const loadChats = async () => {
       try {
         const res = await fetch(`${BASE_URL}/history`, {
