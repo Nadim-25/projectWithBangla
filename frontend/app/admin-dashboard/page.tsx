@@ -128,9 +128,9 @@ export default function DashboardPage() {
   if (!summary) return null;
 
   // ── User card definitions ──────────────────────────────────────────────────
-  const userCards: Omit<StatCardProps, "onClick"> & {
+  const userCards: (Omit<StatCardProps, "onClick"> & {
     filterFn: (u: UserRow) => boolean;
-  }[] = [
+  })[] = [
     {
       label: "Total Users",
       value: summary.users.total,
@@ -183,9 +183,9 @@ export default function DashboardPage() {
   ];
 
   // ── Doc card definitions ───────────────────────────────────────────────────
-  const docCards: Omit<StatCardProps, "onClick"> & {
+  const docCards: (Omit<StatCardProps, "onClick"> & {
     filterFn: (d: DocRow) => boolean;
-  }[] = [
+  })[] = [
     {
       label: "Total Documents",
       value: summary.documents.total,

@@ -22,6 +22,9 @@ type User = {
   role: string;
   division: string;
   department: string;
+  isActive: boolean;
+  isVerified: boolean;
+  createdAt?: string;
 };
 
 type Props = {
