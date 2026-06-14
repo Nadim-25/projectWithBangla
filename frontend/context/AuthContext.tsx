@@ -30,8 +30,6 @@ type AuthContextType = {
 const publicRoutes = [
   "/login",
   "/register",
-  "/forgot-password",
-  "/reset-password",
 ];
 
 const AuthContext = createContext<AuthContextType | null>(null);

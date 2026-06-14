@@ -6,8 +6,6 @@ import { NextRequest, NextResponse } from "next/server";
 const PUBLIC_ROUTES = [
   "/login",
   "/register",
-  "/forgot-password",
-  "/reset-password",
 ];
 
 // Requires a valid token but no specific role (any authenticated user)

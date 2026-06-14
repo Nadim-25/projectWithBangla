@@ -151,13 +151,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Forgot password */}
-        <p className="text-right text-xs text-neutral-500 mt-1">
-          <a href="/forgot-password" className="hover:text-white transition">
-            Forgot password?
-          </a>
-        </p>
-
         {/* Divider */}
         <div className="my-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-neutral-800" />

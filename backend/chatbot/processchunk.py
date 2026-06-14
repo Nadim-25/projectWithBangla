@@ -12,7 +12,8 @@ from utils.get_current_user import get_current_user
 
 process_router = APIRouter()
 
-UPLOAD_DIR = "uploads"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 
 @process_router.post("/{document_id}")

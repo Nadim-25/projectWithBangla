@@ -63,9 +63,3 @@ class Document(SQLModel, table=True):
     createdAt: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-
-class Test(SQLModel, table=True):
-    __tablename__ = "test"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str

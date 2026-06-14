@@ -21,10 +21,6 @@ class User(SQLModel, table=True):
     department: str = Field(default="CRM")
     isVerified: bool = Field(default=False)
     isActive: bool = Field(default=True)
-    verifyToken: Optional[str] = None
-    verifyTokenExpiry: Optional[datetime] = None
-    passwordResetToken: Optional[str] = None
-    passwordResetExpiry: Optional[datetime] = None
     refreshToken: Optional[str] = None
     accessToken: Optional[str] = None
     accessTokenExpiry: Optional[datetime] = None

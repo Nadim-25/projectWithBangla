@@ -8,6 +8,23 @@ def extract_doc_text(file_path: str):
     text = pypandoc.convert_file(file_path, 'plain')
     return text
 
+def extract_text_ocr(file_path: str) -> str:
+    """OCR fallback for scanned/image-based PDFs using pypdfium2 + pytesseract."""
+    import pypdfium2 as pdfium
+    import pytesseract
+
+    text = ""
+    pdf = pdfium.PdfDocument(file_path)
+    for i in range(len(pdf)):
+        page = pdf[i]
+        # Scale 2x for better OCR accuracy
+        bitmap = page.render(scale=2)
+        pil_image = bitmap.to_pil()
+        page_text = pytesseract.image_to_string(pil_image)
+        if page_text:
+            text += page_text + "\n"
+    return text.strip()
+
 def extract_text(file_path: str):
     ext = os.path.splitext(file_path)[1].lower()
     text = ""
@@ -22,6 +39,10 @@ def extract_text(file_path: str):
                     extracted = page.extract_text()
                     if extracted:
                         text += extracted + "\n"
+
+            # Scanned PDF fallback — use OCR
+            if not text.strip():
+                text = extract_text_ocr(file_path)
 
         # =========================
         # DOCX

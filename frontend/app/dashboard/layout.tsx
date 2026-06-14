@@ -3,7 +3,7 @@
 import { AppSidebarFront } from "@/components/apps-sidebar-front";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/context/AuthContext";
-import { ChevronDown, Menu } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -30,24 +30,20 @@ export default function DashboardLayoutFront({
         {/* SIDEBAR */}
         <AppSidebarFront />
 
-        {/* FLOATING TRIGGER */}
-        <div className="absolute left-3 top-3 z-50">
-          <SidebarTrigger>
-            <Menu className="h-5 w-5" />
-          </SidebarTrigger>
-        </div>
-
         {/* MAIN AREA */}
         <div className="flex flex-1 flex-col">
           {/* TOPBAR */}
-          <header className="flex h-14 items-center justify-between border-b px-4 sm:px-16">
+          <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6 bg-sidebar">
             {/* LEFT */}
             <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-lg font-semibold truncate max-w-[140px] sm:max-w-none">IDLC Finance PLC</h1>
+              <SidebarTrigger />
+              <h1 className="text-sm sm:text-lg font-semibold truncate max-w-[140px] sm:max-w-none">
+                IDLC Finance PLC
+              </h1>
             </div>
 
             {/* RIGHT */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {/* USER DROPDOWN */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -59,11 +55,11 @@ export default function DashboardLayoutFront({
                 </DropdownMenuTrigger>
 
                 <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem
+                  {/* <DropdownMenuItem
                     onClick={() => router.push("/dashboard/profile")}
                   >
                     Profile
-                  </DropdownMenuItem>
+                  </DropdownMenuItem> */}
 
                   <DropdownMenuItem
                     onClick={() => router.push("/dashboard/change-password")}

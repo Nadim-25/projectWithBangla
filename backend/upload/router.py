@@ -12,7 +12,8 @@ from upload.schema import DocumentResponse
 
 upload_router = APIRouter()
 
-UPLOAD_DIR = "uploads"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # =========================

@@ -22,24 +22,25 @@ import { useAuth } from "@/context/AuthContext";
 export function AppSidebarFront() {
   const { user, logout } = useAuth();
 
-  const initials = user?.fullName
-    ?.split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() ?? "U";
+  const initials =
+    user?.fullName
+      ?.split(" ")
+      .map((n: string) => n[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() ?? "U";
   return (
     <Sidebar collapsible="offcanvas" className="border-r">
       {/* HEADER */}
-      <SidebarHeader className="flex items-center px-3 py-3">
-        {/* <Button variant="ghost" className="flex items-center gap-2">
-          <Folder className="h-5 w-5" />
-          <span className="font-medium">IDLC</span>
-        </Button> */}
-      </SidebarHeader>
-
+      <SidebarHeader />
+      <div className="flex justify-center 2xl">ChatBot</div>
       {/* CONTENT */}
       <SidebarContent>
+        {user?.role == "admin" && (
+          <Link href="/admin-dashboard" className="ml-4 mt-3">
+            Go to Admin Dashboard
+          </Link>
+        )}
         <ScrollArea className="h-[calc(100vh-120px)] px-2 mt-5">
           {/* NEW CHAT */}
           <Link
@@ -49,10 +50,7 @@ export function AppSidebarFront() {
             <MessageSquare className="h-4 w-4" />
             New Chat
           </Link>
-          {user?.role == "admin" && (
-            <Link href="/admin-dashboard">Admin Dashboard</Link>
-          )}
-
+          <div className="mb-1 font-bold">Recent Chat</div>
           {/* CHAT LIST */}
           <GetAllChats />
         </ScrollArea>
@@ -67,8 +65,12 @@ export function AppSidebarFront() {
             </Avatar>
 
             <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{user?.fullName ?? "User"}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.role ?? ""}</p>
+              <p className="text-sm font-medium truncate">
+                {user?.fullName ?? "User"}
+              </p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {user?.role ?? ""}
+              </p>
             </div>
           </div>
 

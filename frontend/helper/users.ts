@@ -111,6 +111,70 @@ export async function getAdminSummary() {
 }
 
 // ======================================
+// REGISTER / ADD USER BY ADMIN
+// ======================================
+export async function registerUser(data: {
+  fullName: string;
+  userName: string;
+  email: string;
+  hashedPassword: string;
+  confirmHashedPassword: string;
+}) {
+  const token = getToken();
+
+  const res = await fetch(`${BASE_URL}/user/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const result = await res.json();
+
+  if (!res.ok) {
+    throw new Error(result.detail || "Failed to register user");
+  }
+
+  return result;
+}
+
+// ======================================
+// UPDATE USER BY ADMIN
+// ======================================
+export async function updateUser(
+  userId: number,
+  data: {
+    fullName: string;
+    userName: string;
+    email: string;
+    role: string;
+    division: string;
+    department: string;
+  },
+) {
+  const token = getToken();
+
+  const res = await fetch(`${BASE_URL}/user/update-user/${userId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const result = await res.json();
+
+  if (!res.ok) {
+    throw new Error(result.detail || "Failed to update user");
+  }
+
+  return result;
+}
+
+// ======================================
 // RESET PASSWORD BY ADMIN
 // ======================================
 export async function resetPasswordByAdmin(

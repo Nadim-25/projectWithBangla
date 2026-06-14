@@ -216,6 +216,25 @@ def get_chat_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@chat_router.delete("/chat/{chat_id}")
+def delete_chat(
+    chat_id: int,
+    session: Session = Depends(get_database),
+    current_user: User = Depends(get_current_user)
+):
+    chat = session.exec(
+        select(Chat).where(Chat.id == chat_id, Chat.user_id == current_user.id)
+    ).first()
+
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    session.delete(chat)
+    session.commit()
+
+    return {"message": "Chat deleted"}
+
+
 @chat_router.get("/history/{chat_id}")
 def get_single_chat(
     chat_id: int,

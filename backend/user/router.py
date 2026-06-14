@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from utils.database import get_database
 from user.model import User
-from user.schema import passwordChangeDefault, UserResponseModel, CreateUserSchema, UserResponseModel, UserLogin, ChangePasswordSchema, ForgotPasswordSchema, ChangePasswordByAdminSchema
+from user.schema import UserResponseModel, CreateUserSchema, UserResponseModel, UserLogin, ChangePasswordSchema, ChangePasswordByAdminSchema, UpdateUserSchema
 from utils.jwt_helper import hash_password, verify_password
 from utils.jwt_helper import ALGORITHM, SECRET_KEY
 from jose import jwt
@@ -53,34 +53,6 @@ def register(user: CreateUserSchema, session: Session = Depends(get_database)):
 
     return {"message": "User Created Successfully"}
 
-
-@user_router.post("/login")
-def login_user(body:UserLogin, db:Session = Depends(get_database)):
-    user = db.exec(
-        select(User).where(User.email == body.email)
-    ).first()
-
-    if not user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Wrong Email")
-    
-    if not user.isActive:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not active")
-    
-    if not user.isVerified:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not Verified")
-    
-    if not verify_password(body.password, user.hashedPassword):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong Password")
-    
-    from utils.jwt_helper import ACCESS_TOKEN_EXPIRE_MINUTES
-    exp_time = datetime.now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-
-    token = jwt.encode({"id": user.id, "role": user.role, "exp": exp_time.timestamp()}, SECRET_KEY, ALGORITHM)
-    
-    return {
-    "access_token": token,
-    "token_type": "bearer"
-    }
 
 @user_router.get("/is-auth", response_model = UserResponseModel)
 def is_authenticated(current_user: User = Depends(get_current_user)):
@@ -160,160 +132,6 @@ def changePassword(
     }
     
 
-
-from fastapi_mail import FastMail, MessageSchema
-
-from config.mail import conf
-
-import secrets
-from datetime import datetime, timedelta
-
-import os
-
-
-
-@user_router.post("/forgot-password")
-async def forgot_password(
-    body: ForgotPasswordSchema,
-    db: Session = Depends(get_database),
-):
-
-    # =========================
-    # FIND USER
-    # =========================
-    statement = select(User).where(User.email == body.email)
-
-    user = db.exec(statement).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User not found"
-        )
-
-    # =========================
-    # GENERATE TOKEN
-    # =========================
-    reset_token = secrets.token_urlsafe(32)
-
-    expiry = datetime.now() + timedelta(minutes=15)
-
-    # =========================
-    # SAVE TOKEN
-    # =========================
-    user.passwordResetToken = reset_token
-    user.passwordResetExpiry = expiry
-
-    db.add(user)
-    db.commit()
-
-    # =========================
-    # RESET URL
-    # =========================
-    reset_url = (
-        f"{os.getenv('FRONTEND_URL')}"
-        f"/reset-password?token={reset_token}"
-    )
-
-    # =========================
-    # EMAIL
-    # =========================
-    html = f"""
-    <h2>Password Reset</h2>
-
-    <p>Click below link to reset password:</p>
-
-    <a href="{reset_url}">
-        Reset Password
-    </a>
-
-    <p>Link expires in 15 minutes.</p>
-    """
-
-    message = MessageSchema(
-        subject="Reset Password",
-        recipients=[user.email],
-        body=html,
-        subtype="html",
-    )
-
-    fm = FastMail(conf)
-
-    await fm.send_message(message)
-
-    return {
-        "success": True,
-        "message": "Password reset email sent"
-    }
-
-from user.schema import ResetPasswordSchema
-
-from utils.jwt_helper import hash_password
-
-
-@user_router.post("/reset-password")
-def reset_password(
-    body: ResetPasswordSchema,
-    db: Session = Depends(get_database),
-):
-
-    # =========================
-    # MATCH PASSWORDS
-    # =========================
-    if body.password != body.confirmPassword:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Passwords do not match"
-        )
-
-    # =========================
-    # FIND USER BY TOKEN
-    # =========================
-    statement = select(User).where(
-        User.passwordResetToken == body.token
-    )
-
-    user = db.exec(statement).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid token"
-        )
-
-    # =========================
-    # CHECK EXPIRY
-    # =========================
-    if (
-        not user.passwordResetExpiry
-        or user.passwordResetExpiry < datetime.utcnow()
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token expired"
-        )
-
-    # =========================
-    # HASH PASSWORD
-    # =========================
-    hashed = hash_password(body.password)
-
-    # =========================
-    # UPDATE USER
-    # =========================
-    user.hashedPassword = hashed
-
-    # clear token
-    user.passwordResetToken = None
-    user.passwordResetExpiry = None
-
-    db.add(user)
-    db.commit()
-
-    return {
-        "success": True,
-        "message": "Password reset successful"
-    }
 
 @user_router.put("/password-change-byadmin/{userId}")
 def resetPasswordByAdmin(userId:int, body:ChangePasswordByAdminSchema, session:Session = Depends(get_database), current_user: User = Depends(get_current_user)):
@@ -447,6 +265,35 @@ def toggle_verified(
         "message": "User verified status updated",
         "isVerified": user.isVerified
     }
+
+@user_router.put("/update-user/{user_id}", response_model=UserResponseModel)
+def update_user(
+    user_id: int,
+    body: UpdateUserSchema,
+    session: Session = Depends(get_database),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Access denied")
+
+    user = session.exec(select(User).where(User.id == user_id)).first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.fullName = body.fullName
+    user.userName = body.userName
+    user.email = body.email
+    user.role = body.role
+    user.division = body.division
+    user.department = body.department
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return user
+
 
 @user_router.post("/login1")
 def login_user(body: UserLogin, db: Session = Depends(get_database)):

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
+from datetime import datetime
 
 class CreateUserSchema(BaseModel):
     fullName: str
@@ -38,16 +39,6 @@ class UserRead(BaseModel):
     class Config:
         from_attributes = True
 
-# class UserResponseModel(BaseModel):
-#     id: int
-#     email: EmailStr
-#     role: str
-#     fullName: str
-#     isActive: bool
-
-#     class Config:
-#         from_attributes = True
-
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -56,15 +47,6 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
-class ForgotPasswordSchema(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordSchema(BaseModel):
-    token: str
-    password: str
-    confirmPassword: str
-
 class ChangePasswordByAdminSchema(BaseModel):
     password: str
     confirmPassword: str
@@ -72,10 +54,26 @@ class ChangePasswordByAdminSchema(BaseModel):
 class UserResponseModel(BaseModel):
     id: int
     fullName: str
+    userName: str
     email: str
+    role: Optional[str] = None
+    division: Optional[str] = None
+    department: Optional[str] = None
     isActive: bool
     isVerified: bool
-    role: Optional[str] = None     
+    createdAt: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UpdateUserSchema(BaseModel):
+    fullName: str
+    userName: str
+    email: str
+    role: str
+    division: str
+    department: str
 
 class passwordChangeDefault(BaseModel):
         password: str

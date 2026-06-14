@@ -8,20 +8,28 @@ import {
   toggleUserVerified,
 } from "@/helper/users";
 
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import AdminResetPasswordDialog from "@/components/admin-reset-password-dialog";
+import ViewUserDialog from "@/components/view-user-dialog";
+import EditUserDialog from "@/components/edit-user-dialog";
 
 type User = {
   id: number;
   fullName: string;
+  userName: string;
   email: string;
+  role: string;
+  division: string;
+  department: string;
   isActive: boolean;
   isVerified: boolean;
+  createdAt?: string;
 };
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   // ===================================
@@ -31,12 +39,7 @@ export default function UsersPage() {
     const fetchUsers = async () => {
       try {
         const data = await getAllUsers();
-
-        if (Array.isArray(data)) {
-          setUsers(data);
-        } else {
-          setUsers([]);
-        }
+        setUsers(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -52,18 +55,10 @@ export default function UsersPage() {
   // ===================================
   const handleToggleActive = async (id: number) => {
     try {
-      // backend update
       const res = await toggleUserActive(id);
-
-      // update UI
       setUsers((prev) =>
         prev.map((user) =>
-          user.id === id
-            ? {
-                ...user,
-                isActive: res.isActive,
-              }
-            : user,
+          user.id === id ? { ...user, isActive: res.isActive } : user,
         ),
       );
     } catch (err: unknown) {
@@ -76,24 +71,29 @@ export default function UsersPage() {
   // ===================================
   const handleToggleVerified = async (id: number) => {
     try {
-      // backend update
       const res = await toggleUserVerified(id);
-
-      // update UI
       setUsers((prev) =>
         prev.map((user) =>
-          user.id === id
-            ? {
-                ...user,
-                isVerified: res.isVerified,
-              }
-            : user,
+          user.id === id ? { ...user, isVerified: res.isVerified } : user,
         ),
       );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "An error occurred");
     }
   };
+
+  // ===================================
+  // UPDATE USER
+  // ===================================
+  const handleUserUpdated = (updated: User) => {
+    setUsers((prev) =>
+      prev.map((user) => (user.id === updated.id ? { ...user, ...updated } : user)),
+    );
+  };
+
+  const filteredUsers = users.filter((u) =>
+    u.email.toLowerCase().includes(search.toLowerCase()),
+  );
 
   if (loading) {
     return <div>Loading users...</div>;
@@ -102,36 +102,45 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       {/* HEADER */}
-      <div>
-        <h1 className="text-2xl font-bold">Users Management</h1>
-
-        <p className="text-muted-foreground text-sm">
-          Manage all registered users
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Users Management</h1>
+          <p className="text-muted-foreground text-sm">
+            Manage all registered users
+          </p>
+        </div>
+        <Input
+          placeholder="Search by email..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-64"
+        />
       </div>
 
       {/* TABLE */}
       <div className="rounded-xl border overflow-x-auto">
-        <table className="w-full min-w-[700px]">
+        <table className="w-full min-w-[800px]">
           <thead className="bg-muted/50">
             <tr>
               <th className="text-left p-4">Full Name</th>
-
               <th className="text-left p-4">Email</th>
-
               <th className="text-left p-4">Active</th>
-
               <th className="text-left p-4">Verified</th>
-
               <th className="text-left p-4">Reset Password</th>
-
               <th className="text-left p-4">View</th>
               <th className="text-left p-4">Edit</th>
             </tr>
           </thead>
 
           <tbody>
-            {users.map((user) => (
+            {filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan={7} className="p-6 text-center text-sm text-muted-foreground">
+                  No users match your search
+                </td>
+              </tr>
+            )}
+          {filteredUsers.map((user) => (
               <tr key={user.id} className="border-t">
                 {/* FULL NAME */}
                 <td className="p-4">{user.fullName}</td>
@@ -160,12 +169,14 @@ export default function UsersPage() {
                   <AdminResetPasswordDialog userId={user.id} />
                 </td>
 
-                {/* EDIT */}
+                {/* VIEW DETAILS */}
                 <td className="p-4">
-                  <Button>View details</Button>
+                  <ViewUserDialog user={user} />
                 </td>
+
+                {/* EDIT USER */}
                 <td className="p-4">
-                  <Button variant="secondary">Edit User</Button>
+                  <EditUserDialog user={user} onUpdated={handleUserUpdated} />
                 </td>
               </tr>
             ))}

@@ -3,7 +3,6 @@
 import {
   LogOut,
   Upload,
-  UserPlus,
   LayoutDashboard,
   FileText,
   User2Icon,
@@ -24,26 +23,25 @@ import { ScrollArea } from "./ui/scroll-area";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/context/AuthContext";
+import AddUserDialog from "./add-user-dialog";
 
 export function AppSidebar() {
   const { user, logout } = useAuth();
 
-  const initials = user?.fullName
-    ?.split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() ?? "U";
+  const initials =
+    user?.fullName
+      ?.split(" ")
+      .map((n: string) => n[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() ?? "U";
   return (
     <Sidebar collapsible="offcanvas" className="border-r">
       {/* HEADER */}
-      <SidebarHeader className="flex items-center px-3 py-3">
-        {/* <Button variant="ghost" className="flex items-center gap-2">
-          <Folder className="h-5 w-5" />
-          <span className="font-medium">IDLC</span>
-        </Button> */}
-      </SidebarHeader>
-
+      <SidebarHeader />
+      <Link className="flex justify-center 2xl" href="/admin-dashboard">
+        ChatBot
+      </Link>
       {/* CONTENT */}
       <SidebarContent>
         <ScrollArea className="h-[calc(100vh-120px)] px-2 mt-5">
@@ -55,13 +53,7 @@ export function AppSidebar() {
             <Upload className="h-4 w-4" />
             Upload File
           </Link>
-          <Link
-            href="/dashboard"
-            className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
-          >
-            <UserPlus className="h-4 w-4" />
-            Add User
-          </Link>
+          <AddUserDialog />
 
           <Link
             href="/dashboard"
@@ -88,7 +80,6 @@ export function AppSidebar() {
           </Link>
         </ScrollArea>
       </SidebarContent>
-
       {/* FOOTER */}
       <SidebarFooter className="border-t p-3">
         <div className="flex items-center justify-between">
@@ -98,8 +89,12 @@ export function AppSidebar() {
             </Avatar>
 
             <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{user?.fullName ?? "User"}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.role ?? ""}</p>
+              <p className="text-sm font-medium truncate">
+                {user?.fullName ?? "User"}
+              </p>
+              <p className="text-xs text-muted-foreground capitalize">
+                {user?.role ?? ""}
+              </p>
             </div>
           </div>
 
