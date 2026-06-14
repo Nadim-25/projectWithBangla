@@ -4,6 +4,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, s
 from sqlmodel import Session, select
 from datetime import datetime, timezone
 from utils.database import get_database
+from utils.storage import upload_file, delete_file
 from chatbot.model import Document
 import uuid
 from user.model import User
@@ -12,15 +13,7 @@ from upload.schema import DocumentResponse
 
 upload_router = APIRouter()
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# =========================
-# CONFIG
-# =========================
-
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 ALLOWED_MIME_TYPES = {
     "application/pdf",
@@ -28,82 +21,51 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+MIME_TO_CONTENT_TYPE = {
+    "application/pdf": "application/pdf",
+    "application/msword": "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
-# =========================
-# VALIDATION FUNCTIONS
-# =========================
 
-def validate_file_content(file: UploadFile):
-    header = file.file.read(2048)
-    mime = magic.from_buffer(header, mime=True)
-    file.file.seek(0)
-
+def validate_file_bytes(data: bytes):
+    mime = magic.from_buffer(data[:2048], mime=True)
     if mime not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Invalid file type: {mime}"
+            detail=f"Invalid file type: {mime}",
         )
-
-
-def validate_file_size(file: UploadFile):
-    size = 0
-    chunk_size = 1024 * 1024  # 1MB
-
-    while chunk := file.file.read(chunk_size):
-        size += len(chunk)
-        if size > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="File too large (max 10MB)"
-            )
-
-    file.file.seek(0)
-
-
-def validate_file(file: UploadFile):
-    validate_file_content(file)
-    validate_file_size(file)
+    if len(data) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large (max 10 MB)",
+        )
+    return mime
 
 
 # =========================
-# UPLOAD ENDPOINT
+# UPLOAD
 # =========================
 @upload_router.post("/")
-async def upload_file(
+async def upload_file_endpoint(
     file: UploadFile = File(...),
     displayName: str = Form(...),
     division: str = Form(...),
     department: str = Form(...),
     current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_database)
+    session: Session = Depends(get_database),
 ):
-    file_path = None
-
     try:
-        # =========================
-        # STEP 1: VALIDATION
-        # =========================
-        validate_file(file)
+        data = await file.read()
+        mime = validate_file_bytes(data)
 
-        # =========================
-        # STEP 2: SAFE FILENAMES
-        # =========================
-        original_name = os.path.splitext(file.filename)[0]
         ext = os.path.splitext(file.filename)[1].lower()
-
+        original_name = os.path.splitext(file.filename)[0]
         unique_name = f"{uuid.uuid4()}{ext}"
-        file_path = os.path.join(UPLOAD_DIR, unique_name)
 
-        # =========================
-        # STEP 3: SAVE FILE
-        # =========================
-        with open(file_path, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):
-                buffer.write(chunk)
+        upload_file(data, unique_name, MIME_TO_CONTENT_TYPE.get(mime, "application/octet-stream"))
 
-        # =========================
-        # STEP 4: SAVE DB RECORD
-        # =========================
         new_doc = Document(
             userId=current_user.id,
             division=division,
@@ -113,76 +75,53 @@ async def upload_file(
             fileName=original_name,
             processed=False,
             fileExt=ext,
-            createdAt=datetime.now(timezone.utc)
+            createdAt=datetime.now(timezone.utc),
         )
 
         session.add(new_doc)
         session.commit()
         session.refresh(new_doc)
 
-        return {
-            "message": "File uploaded successfully",
-            "documentId": new_doc.id
-        }
+        return {"message": "File uploaded successfully", "documentId": new_doc.id}
 
     except HTTPException:
         raise
     except Exception as e:
         session.rollback()
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # =========================
-# DELETE ENDPOINT
+# DELETE
 # =========================
 @upload_router.delete("/{document_id}")
 async def delete_document(
     document_id: int,
     current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_database)
+    session: Session = Depends(get_database),
 ):
-    statement = select(Document).where(
-        Document.id == document_id,
-        Document.userId == current_user.id
-    )
-
-    document = session.exec(statement).first()
+    document = session.exec(
+        select(Document).where(
+            Document.id == document_id,
+            Document.userId == current_user.id,
+        )
+    ).first()
 
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    file_path = os.path.join(UPLOAD_DIR, document.storedFileName)
-
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error deleting file: {str(e)}"
-            )
+    delete_file(document.storedFileName)
 
     session.delete(document)
     session.commit()
 
-    return {
-        "message": "Document deleted successfully",
-        "deletedId": document_id
-    }
+    return {"message": "Document deleted successfully", "deletedId": document_id}
 
 
 # =========================
-# GET ALL DOCS (current user only)
+# GET ALL DOCS
 # =========================
-@upload_router.get(
-    "/getalldocs",
-    response_model=list[DocumentResponse]
-)
+@upload_router.get("/getalldocs", response_model=list[DocumentResponse])
 def getAllDocs(
     session: Session = Depends(get_database),
     current_user: User = Depends(get_current_user),
@@ -190,5 +129,4 @@ def getAllDocs(
     docs = session.exec(
         select(Document).where(Document.userId == current_user.id)
     ).all()
-
     return docs
