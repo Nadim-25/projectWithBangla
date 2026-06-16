@@ -103,15 +103,15 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div>
       <Card>
         <CardHeader>
           <CardTitle>Documents</CardTitle>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="px-0 sm:px-6">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b text-left">
                   <th className="p-4">Document</th>

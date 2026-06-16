@@ -102,9 +102,9 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Users Management</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">Users Management</h1>
           <p className="text-muted-foreground text-sm">
             Manage all registered users
           </p>
@@ -113,13 +113,13 @@ export default function UsersPage() {
           placeholder="Search by email..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-64"
+          className="w-full sm:w-64"
         />
       </div>
 
       {/* TABLE */}
-      <div className="rounded-xl border overflow-x-auto">
-        <table className="w-full min-w-[800px]">
+      <div className="rounded-xl border overflow-x-auto -mx-2 sm:mx-0">
+        <table className="w-full min-w-[700px]">
           <thead className="bg-muted/50">
             <tr>
               <th className="text-left p-4">Full Name</th>

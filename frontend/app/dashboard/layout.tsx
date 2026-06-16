@@ -33,7 +33,7 @@ export default function DashboardLayoutFront({
         {/* MAIN AREA */}
         <div className="flex flex-1 flex-col">
           {/* TOPBAR */}
-          <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6 bg-sidebar">
+          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b px-4 sm:px-6 bg-sidebar">
             {/* LEFT */}
             <div className="flex items-center gap-2">
               <SidebarTrigger />

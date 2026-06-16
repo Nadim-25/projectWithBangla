@@ -15,6 +15,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 import { Button } from "./ui/button";
@@ -27,6 +28,11 @@ import AddUserDialog from "./add-user-dialog";
 
 export function AppSidebar() {
   const { user, logout } = useAuth();
+  const { setOpenMobile, isMobile } = useSidebar();
+
+  const closeOnMobile = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   const initials =
     user?.fullName
@@ -45,9 +51,9 @@ export function AppSidebar() {
       {/* CONTENT */}
       <SidebarContent>
         <ScrollArea className="h-[calc(100vh-120px)] px-2 mt-5">
-          {/* NEW CHAT */}
           <Link
             href="/admin-dashboard/upload"
+            onClick={closeOnMobile}
             className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
           >
             <Upload className="h-4 w-4" />
@@ -57,25 +63,26 @@ export function AppSidebar() {
 
           <Link
             href="/dashboard"
+            onClick={closeOnMobile}
             className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
           >
             <LayoutDashboard className="h-4 w-4" />
-            Uer Dashboard
+            User Dashboard
           </Link>
           <Link
             href="/admin-dashboard/users"
+            onClick={closeOnMobile}
             className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
           >
-            {/* <LayoutDashboard className="h-4 w-4" /> */}
-            <User2Icon />
-            All User
+            <User2Icon className="h-4 w-4" />
+            All Users
           </Link>
           <Link
             href="/admin-dashboard/documents"
+            onClick={closeOnMobile}
             className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
           >
-            {/* <LayoutDashboard className="h-4 w-4" /> */}
-            <FileText />
+            <FileText className="h-4 w-4" />
             Documents
           </Link>
         </ScrollArea>

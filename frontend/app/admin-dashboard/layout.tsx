@@ -30,7 +30,7 @@ export default function DashboardLayout({
         {/* MAIN AREA */}
         <div className="flex flex-1 flex-col">
           {/* TOPBAR */}
-          <header className="flex h-14 items-center justify-between border-b px-4 sm:px-6 bg-sidebar">
+          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b px-4 sm:px-6 bg-sidebar">
             <div className="flex items-center gap-2">
               <SidebarTrigger />
               <h1 className="text-sm sm:text-lg font-semibold truncate max-w-[140px] sm:max-w-none">
@@ -76,7 +76,7 @@ export default function DashboardLayout({
           </header>
 
           {/* CONTENT */}
-          <main className="flex-1 overflow-auto p-6">{children}</main>
+          <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
         </div>
       </div>
     </SidebarProvider>
