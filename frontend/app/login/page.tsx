@@ -114,7 +114,7 @@ export default function LoginPage() {
                 type="email"
                 required
                 className="w-full pl-9 pr-3 py-2 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-white/20"
-                placeholder="Enter Your Email"
+                placeholder="Enter Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
