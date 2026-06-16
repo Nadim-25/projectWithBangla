@@ -31,7 +31,10 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       const res = await registerUser(form);
-      showFlash(res.message || "Account created! Please wait for admin approval.", "success");
+      showFlash(
+        res.message || "Account created! Please wait for admin approval.",
+        "success",
+      );
       router.push("/login");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred";
@@ -43,11 +46,41 @@ export default function RegisterPage() {
   };
 
   const fields = [
-    { label: "Full Name", name: "fullName", type: "text", placeholder: "John Doe", icon: User },
-    { label: "Username", name: "userName", type: "text", placeholder: "johndoe", icon: AtSign },
-    { label: "Email", name: "email", type: "email", placeholder: "john@example.com", icon: Mail },
-    { label: "Password", name: "hashedPassword", type: "password", placeholder: "••••••••", icon: Lock },
-    { label: "Confirm Password", name: "confirmHashedPassword", type: "password", placeholder: "••••••••", icon: Lock },
+    {
+      label: "Full Name",
+      name: "fullName",
+      type: "text",
+      placeholder: "Enter Your Full Name",
+      icon: User,
+    },
+    {
+      label: "Username",
+      name: "userName",
+      type: "text",
+      placeholder: "Enter User Name",
+      icon: AtSign,
+    },
+    {
+      label: "Email",
+      name: "email",
+      type: "email",
+      placeholder: "Enter Your Email",
+      icon: Mail,
+    },
+    {
+      label: "Password",
+      name: "hashedPassword",
+      type: "password",
+      placeholder: "•••",
+      icon: Lock,
+    },
+    {
+      label: "Confirm Password",
+      name: "confirmHashedPassword",
+      type: "password",
+      placeholder: "•••",
+      icon: Lock,
+    },
   ] as const;
 
   return (
@@ -55,13 +88,17 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-semibold text-white">Create Account</h1>
-          <p className="text-sm text-neutral-400 mt-1">Register to get started</p>
+          <p className="text-sm text-neutral-400 mt-1">
+            Register to get started
+          </p>
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           {fields.map(({ label, name, type, placeholder, icon: Icon }) => (
             <div key={name}>
-              <label className="text-xs text-neutral-400 mb-1 block">{label}</label>
+              <label className="text-xs text-neutral-400 mb-1 block">
+                {label}
+              </label>
               <div className="relative">
                 <Icon
                   size={16}
