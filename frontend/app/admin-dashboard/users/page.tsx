@@ -32,9 +32,6 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // ===================================
-  // FETCH USERS
-  // ===================================
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -46,13 +43,9 @@ export default function UsersPage() {
         setLoading(false);
       }
     };
-
     fetchUsers();
   }, []);
 
-  // ===================================
-  // TOGGLE ACTIVE
-  // ===================================
   const handleToggleActive = async (id: number) => {
     try {
       const res = await toggleUserActive(id);
@@ -66,9 +59,6 @@ export default function UsersPage() {
     }
   };
 
-  // ===================================
-  // TOGGLE VERIFIED
-  // ===================================
   const handleToggleVerified = async (id: number) => {
     try {
       const res = await toggleUserVerified(id);
@@ -82,9 +72,6 @@ export default function UsersPage() {
     }
   };
 
-  // ===================================
-  // UPDATE USER
-  // ===================================
   const handleUserUpdated = (updated: User) => {
     setUsers((prev) =>
       prev.map((user) => (user.id === updated.id ? { ...user, ...updated } : user)),
@@ -117,8 +104,56 @@ export default function UsersPage() {
         />
       </div>
 
-      {/* TABLE */}
-      <div className="rounded-xl border overflow-x-auto -mx-2 sm:mx-0">
+      {/* MOBILE CARDS — visible on small screens only */}
+      <div className="flex flex-col gap-3 sm:hidden">
+        {filteredUsers.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No users match your search
+          </p>
+        )}
+        {filteredUsers.map((user) => (
+          <div key={user.id} className="rounded-xl border bg-background p-4 shadow-sm space-y-3">
+            {/* Name + role */}
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold">{user.fullName}</p>
+                <p className="text-xs text-muted-foreground">{user.email}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs capitalize">
+                {user.role}
+              </span>
+            </div>
+
+            {/* Toggles */}
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Active</span>
+                <Switch
+                  checked={user.isActive}
+                  onCheckedChange={() => handleToggleActive(user.id)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Verified</span>
+                <Switch
+                  checked={user.isVerified}
+                  onCheckedChange={() => handleToggleVerified(user.id)}
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <AdminResetPasswordDialog userId={user.id} />
+              <ViewUserDialog user={user} />
+              <EditUserDialog user={user} onUpdated={handleUserUpdated} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* DESKTOP TABLE — hidden on small screens */}
+      <div className="hidden sm:block rounded-xl border overflow-x-auto">
         <table className="w-full min-w-[700px]">
           <thead className="bg-muted/50">
             <tr>
@@ -131,7 +166,6 @@ export default function UsersPage() {
               <th className="text-left p-4">Edit</th>
             </tr>
           </thead>
-
           <tbody>
             {filteredUsers.length === 0 && (
               <tr>
@@ -140,41 +174,28 @@ export default function UsersPage() {
                 </td>
               </tr>
             )}
-          {filteredUsers.map((user) => (
+            {filteredUsers.map((user) => (
               <tr key={user.id} className="border-t">
-                {/* FULL NAME */}
                 <td className="p-4">{user.fullName}</td>
-
-                {/* EMAIL */}
                 <td className="p-4">{user.email}</td>
-
-                {/* ACTIVE */}
                 <td className="p-4">
                   <Switch
                     checked={user.isActive}
                     onCheckedChange={() => handleToggleActive(user.id)}
                   />
                 </td>
-
-                {/* VERIFIED */}
                 <td className="p-4">
                   <Switch
                     checked={user.isVerified}
                     onCheckedChange={() => handleToggleVerified(user.id)}
                   />
                 </td>
-
-                {/* RESET PASSWORD */}
                 <td className="p-4">
                   <AdminResetPasswordDialog userId={user.id} />
                 </td>
-
-                {/* VIEW DETAILS */}
                 <td className="p-4">
                   <ViewUserDialog user={user} />
                 </td>
-
-                {/* EDIT USER */}
                 <td className="p-4">
                   <EditUserDialog user={user} onUpdated={handleUserUpdated} />
                 </td>
