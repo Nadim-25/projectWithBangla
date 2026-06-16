@@ -9,6 +9,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 import { Button } from "./ui/button";
@@ -21,6 +22,11 @@ import { useAuth } from "@/context/AuthContext";
 
 export function AppSidebarFront() {
   const { user, logout } = useAuth();
+  const { setOpenMobile, isMobile } = useSidebar();
+
+  const closeOnMobile = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   const initials =
     user?.fullName
@@ -37,7 +43,7 @@ export function AppSidebarFront() {
       {/* CONTENT */}
       <SidebarContent>
         {user?.role == "admin" && (
-          <Link href="/admin-dashboard" className="ml-4 mt-3">
+          <Link href="/admin-dashboard" onClick={closeOnMobile} className="ml-4 mt-3">
             Go to Admin Dashboard
           </Link>
         )}
@@ -45,6 +51,7 @@ export function AppSidebarFront() {
           {/* NEW CHAT */}
           <Link
             href="/dashboard/ask-question"
+            onClick={closeOnMobile}
             className="mb-4 flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
           >
             <MessageSquare className="h-4 w-4" />
@@ -52,7 +59,7 @@ export function AppSidebarFront() {
           </Link>
           <div className="mb-1 font-bold">Recent Chat</div>
           {/* CHAT LIST */}
-          <GetAllChats />
+          <GetAllChats onLinkClick={closeOnMobile} />
         </ScrollArea>
       </SidebarContent>
 

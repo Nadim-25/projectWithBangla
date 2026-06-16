@@ -12,7 +12,7 @@ type Chat = {
   title: string;
 };
 
-export default function GetAllChats() {
+export default function GetAllChats({ onLinkClick }: { onLinkClick?: () => void }) {
   const [chats, setChats] = useState<Chat[]>([]);
   const pathname = usePathname();
   const router = useRouter();
@@ -72,6 +72,7 @@ export default function GetAllChats() {
           <div key={chat.chatId} className="group relative">
             <Link
               href={`/dashboard/chat/${chat.chatId}`}
+              onClick={onLinkClick}
               className={`flex items-center px-2 py-1 rounded hover:bg-muted pr-8 ${
                 isActive ? "bg-muted font-medium" : ""
               }`}
