@@ -1,42 +1,49 @@
 import os
-from supabase import create_client, Client
+import httpx
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 BUCKET = "projectWithBangla"
 
-_client: Client | None = None
+def _headers() -> dict:
+    return {
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": SUPABASE_KEY,
+    }
 
-
-def _get_client() -> Client:
-    global _client
-    if _client is None:
-        _client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    return _client
+def _storage_url(object_key: str) -> str:
+    return f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{object_key}"
 
 
 def upload_file(file_bytes: bytes, object_key: str, content_type: str = "application/octet-stream"):
-    _get_client().storage.from_(BUCKET).upload(
-        object_key,
-        file_bytes,
-        {"content-type": content_type, "x-upsert": "true"},
-    )
+    headers = {**_headers(), "Content-Type": content_type, "x-upsert": "true"}
+    r = httpx.post(_storage_url(object_key), content=file_bytes, headers=headers, timeout=30)
+    r.raise_for_status()
 
 
 def download_file(object_key: str) -> bytes:
-    return bytes(_get_client().storage.from_(BUCKET).download(object_key))
+    r = httpx.get(_storage_url(object_key), headers=_headers(), timeout=30)
+    r.raise_for_status()
+    return r.content
 
 
 def delete_file(object_key: str):
     try:
-        _get_client().storage.from_(BUCKET).remove([object_key])
+        import json
+        headers = {**_headers(), "Content-Type": "application/json"}
+        httpx.delete(
+            f"{SUPABASE_URL}/storage/v1/object/{BUCKET}",
+            content=json.dumps({"prefixes": [object_key]}).encode(),
+            headers=headers,
+            timeout=15,
+        )
     except Exception:
         pass
 
 
 def file_exists(object_key: str) -> bool:
     try:
-        files = _get_client().storage.from_(BUCKET).list()
-        return any(f.get("name") == object_key for f in files)
+        r = httpx.head(_storage_url(object_key), headers=_headers(), timeout=10)
+        return r.status_code == 200
     except Exception:
         return False
