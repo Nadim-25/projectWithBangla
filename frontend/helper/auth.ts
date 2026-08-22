@@ -34,7 +34,7 @@ export async function registerUser(data: {
   }
 
   if (!res.ok) {
-    throw new Error(detail || `Request failed (${res.status}) → ${BASE_URL}/user/register`);
+    throw new Error(detail || `Request failed (${res.status})`);
   }
 
   return text ? JSON.parse(text) : {};
