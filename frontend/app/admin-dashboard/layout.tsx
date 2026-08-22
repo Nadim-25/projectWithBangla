@@ -43,7 +43,7 @@ export default function DashboardLayout({
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-1 text-sm font-medium hover:text-primary outline-none">
                     <span className="max-w-[100px] sm:max-w-none truncate">
-                      Welcome ! {user?.fullName}
+                      Welcome! {user?.fullName}
                     </span>
                     <ChevronDown className="h-4 w-4" />
                   </button>

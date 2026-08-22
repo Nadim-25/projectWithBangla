@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class DocumentResponse(BaseModel):
@@ -9,3 +10,4 @@ class DocumentResponse(BaseModel):
     fileName: str
     fileExt: str
     processed: bool
+    chunk_strategy: Optional[str] = None

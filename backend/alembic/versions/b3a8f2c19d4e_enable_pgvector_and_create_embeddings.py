@@ -24,6 +24,10 @@ def upgrade() -> None:
             document_id INTEGER REFERENCES document(id) ON DELETE CASCADE,
             content     TEXT NOT NULL,
             embedding   vector(1536),
+            chunk_type  VARCHAR(20),
+            chapter     TEXT,
+            section     TEXT,
+            page_num    INTEGER,
             created_at  TIMESTAMPTZ DEFAULT NOW()
         )
     """)

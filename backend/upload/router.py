@@ -1,11 +1,12 @@
 import os
 import magic
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status
+from typing import Optional
 from sqlmodel import Session, select
 from datetime import datetime, timezone
 from utils.database import get_database
 from utils.storage import upload_file, delete_file
-from chatbot.model import Document
+from chatbot.model import Document, CHUNK_STRATEGIES
 import uuid
 from user.model import User
 from utils.get_current_user import get_current_user
@@ -53,9 +54,16 @@ async def upload_file_endpoint(
     displayName: str = Form(...),
     division: str = Form(...),
     department: str = Form(...),
+    chunk_strategy: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_database),
 ):
+    if chunk_strategy and chunk_strategy not in CHUNK_STRATEGIES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid chunk_strategy. Choose from: {', '.join(sorted(CHUNK_STRATEGIES))}",
+        )
+
     try:
         data = await file.read()
         mime = validate_file_bytes(data)
@@ -66,6 +74,9 @@ async def upload_file_endpoint(
 
         upload_file(data, unique_name, MIME_TO_CONTENT_TYPE.get(mime, "application/octet-stream"))
 
+        # Treat "auto" selection same as None (let chunker decide)
+        resolved_strategy = None if chunk_strategy in (None, "auto") else chunk_strategy
+
         new_doc = Document(
             userId=current_user.id,
             division=division,
@@ -75,6 +86,7 @@ async def upload_file_endpoint(
             fileName=original_name,
             processed=False,
             fileExt=ext,
+            chunk_strategy=resolved_strategy,
             createdAt=datetime.now(timezone.utc),
         )
 
@@ -116,6 +128,39 @@ async def delete_document(
     session.commit()
 
     return {"message": "Document deleted successfully", "deletedId": document_id}
+
+
+# =========================
+# UPDATE STRATEGY
+# =========================
+@upload_router.patch("/{document_id}/strategy")
+async def update_strategy(
+    document_id: int,
+    chunk_strategy: str = Form(...),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_database),
+):
+    if chunk_strategy not in CHUNK_STRATEGIES and chunk_strategy != "auto":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid chunk_strategy. Choose from: {', '.join(sorted(CHUNK_STRATEGIES))}",
+        )
+
+    doc = session.exec(
+        select(Document).where(
+            Document.id == document_id,
+            Document.userId == current_user.id,
+        )
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    doc.chunk_strategy = None if chunk_strategy == "auto" else chunk_strategy
+    session.add(doc)
+    session.commit()
+
+    return {"message": "Strategy updated", "chunk_strategy": doc.chunk_strategy}
 
 
 # =========================

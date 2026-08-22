@@ -26,9 +26,22 @@ async def lifespan(app: FastAPI):
                     document_id INTEGER REFERENCES document(id) ON DELETE CASCADE,
                     content     TEXT NOT NULL,
                     embedding   vector(1536),
+                    chunk_type  VARCHAR(20),
+                    chapter     TEXT,
+                    section     TEXT,
+                    page_num    INTEGER,
                     created_at  TIMESTAMPTZ DEFAULT NOW()
                 )
             """))
+            # Add new columns to existing tables that were created before this schema version
+            for col_ddl in [
+                "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chunk_type VARCHAR(20)",
+                "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chapter TEXT",
+                "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS section TEXT",
+                "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS page_num INTEGER",
+                "ALTER TABLE document ADD COLUMN IF NOT EXISTS chunk_strategy VARCHAR(20)",
+            ]:
+                conn.execute(text(col_ddl))
             try:
                 conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS embeddings_embedding_cosine_idx

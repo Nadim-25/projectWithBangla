@@ -7,7 +7,7 @@ from sqlalchemy import text as sql_text
 from utils.database import get_database
 from utils.storage import download_file, file_exists
 from chatbot.model import Document
-from chatbot.pdf import extract_text, chunk_by_paragraph
+from chatbot.pdf import chunk_hierarchical
 from chatbot.embeddings import create_embedding
 from user.model import User
 from utils.get_current_user import get_current_user
@@ -18,6 +18,7 @@ process_router = APIRouter()
 @process_router.post("/{document_id}")
 async def process_document(
     document_id: int,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_database),
 ):
@@ -36,13 +37,22 @@ async def process_document(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
         if doc.processed:
-            return {"message": "Already processed"}
+            if not force:
+                return {"message": "Already processed"}
+            # force=True: purge old embeddings and reprocess
+            session.execute(
+                sql_text("DELETE FROM embeddings WHERE document_id = :doc_id"),
+                {"doc_id": document_id},
+            )
+            doc.processed = False
+            session.add(doc)
+            session.flush()
 
         if not doc.storedFileName or not doc.fileExt:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File metadata missing")
 
         # =========================
-        # 2. Check file exists in R2
+        # 2. Check file exists
         # =========================
         if not file_exists(doc.storedFileName):
             raise HTTPException(
@@ -51,7 +61,7 @@ async def process_document(
             )
 
         # =========================
-        # 3. Download from R2 → temp file
+        # 3. Download to temp file
         # =========================
         file_bytes = download_file(doc.storedFileName)
 
@@ -61,33 +71,26 @@ async def process_document(
 
         try:
             # =========================
-            # 4. Extract text
+            # 4. Hierarchical chunking
             # =========================
-            text = extract_text(tmp_path)
+            chunk_dicts = chunk_hierarchical(tmp_path, strategy=doc.chunk_strategy)
         finally:
-            os.unlink(tmp_path)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass  # Windows: pypdfium2 may still hold the handle; temp dir cleans up
 
-        if not text.strip():
+        if not chunk_dicts:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="No text could be extracted from the document",
+                detail="No content could be extracted from the document",
             )
 
         # =========================
-        # 5. Chunk
+        # 5. Embeddings
         # =========================
-        chunks = chunk_by_paragraph(text)
-
-        if not chunks:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Chunking failed",
-            )
-
-        # =========================
-        # 6. Embeddings
-        # =========================
-        embeddings = create_embedding(chunks)
+        contents = [c["content"] for c in chunk_dicts]
+        embeddings = create_embedding(contents)
 
         if not embeddings:
             raise HTTPException(
@@ -96,26 +99,43 @@ async def process_document(
             )
 
         # =========================
-        # 7. Insert into DB
+        # 6. Insert into DB
         # =========================
-        for chunk, embedding in zip(chunks, embeddings):
+        for chunk_dict, embedding in zip(chunk_dicts, embeddings):
             embedding_str = "[" + ",".join(map(str, embedding)) + "]"
             session.execute(
                 sql_text("""
-                    INSERT INTO embeddings (document_id, content, embedding)
-                    VALUES (:document_id, :content, :embedding)
+                    INSERT INTO embeddings
+                        (document_id, content, embedding, chunk_type, chapter, section, page_num)
+                    VALUES
+                        (:document_id, :content, :embedding, :chunk_type, :chapter, :section, :page_num)
                 """),
-                {"document_id": document_id, "content": chunk, "embedding": embedding_str},
+                {
+                    "document_id": document_id,
+                    "content": chunk_dict["content"],
+                    "embedding": embedding_str,
+                    "chunk_type": chunk_dict["type"],
+                    "chapter": chunk_dict["chapter"],
+                    "section": chunk_dict["section"],
+                    "page_num": chunk_dict["page"],
+                },
             )
 
         # =========================
-        # 8. Mark processed
+        # 7. Mark processed
         # =========================
         doc.processed = True
         session.add(doc)
         session.commit()
 
-        return {"message": "Processing completed", "chunks": len(chunks)}
+        from collections import Counter
+        type_counts = Counter(c["type"] for c in chunk_dicts)
+
+        return {
+            "message": "Processing completed",
+            "chunks": len(chunk_dicts),
+            "chunk_breakdown": dict(type_counts),
+        }
 
     except HTTPException:
         raise

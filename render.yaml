@@ -1,28 +1,32 @@
 services:
   - type: web
-    name: idlc-chatbot-backend
+    name: projectwithbangla-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
     envVars:
       - key: DATABASE_URL
-        sync: false
+        sync: false           # Set in Render dashboard: Neon connection string
       - key: SECRET_KEY
-        sync: false
+        sync: false           # Set in Render dashboard
       - key: OPENAI_API_KEY
-        sync: false
+        sync: false           # Set in Render dashboard
+      - key: SUPABASE_URL
+        value: https://fpgvsknhjcrkbludoleo.supabase.co
+      - key: SUPABASE_KEY
+        sync: false           # Set in Render dashboard: service_role key from Supabase
       - key: FRONTEND_URL
-        sync: false
+        sync: false           # Set after Vercel deploy (e.g. https://your-app.vercel.app)
       - key: MAIL_USERNAME
         sync: false
       - key: MAIL_PASSWORD
         sync: false
       - key: MAIL_FROM
-        sync: false
+        value: noreply@example.com
       - key: MAIL_PORT
-        sync: false
+        value: "2525"
       - key: MAIL_SERVER
-        sync: false
+        value: sandbox.smtp.mailtrap.io
       - key: MAIL_FROM_NAME
-        sync: false
+        value: AI APP

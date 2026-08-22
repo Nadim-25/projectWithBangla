@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { getChatById } from "@/helper/tokenHelper";
 import { sendMessage } from "@/helper/message";
 import { useAuth } from "@/context/AuthContext";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   ArrowUp,
@@ -12,11 +14,18 @@ import {
   Copy,
   Check,
   Loader2,
+  FileText,
 } from "lucide-react";
+
+type Source = {
+  name: string;
+  page?: number | null;
+};
 
 type Message = {
   question: string;
   answer: string;
+  sources?: Source[];
 };
 
 function TypingDots() {
@@ -25,6 +34,30 @@ function TypingDots() {
       <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
       <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
       <span className="h-2 w-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
+    </div>
+  );
+}
+
+function SourceCitations({ sources }: { sources: Source[] }) {
+  if (!sources || sources.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {sources.map((src, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-1.5 rounded-full border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground"
+        >
+          <FileText className="h-3 w-3 shrink-0" />
+          <span className="max-w-[220px] truncate" title={src.name}>
+            {src.name}
+          </span>
+          {src.page != null && (
+            <span className="ml-0.5 rounded bg-muted px-1 font-medium">
+              p.{src.page}
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -113,7 +146,9 @@ export default function ChatPage() {
       const res = await sendMessage(currentQuestion, chatId);
       setMessages((prev) =>
         prev.map((msg, i) =>
-          i === prev.length - 1 ? { ...msg, answer: res.answer } : msg,
+          i === prev.length - 1
+            ? { ...msg, answer: res.answer, sources: res.sources ?? [] }
+            : msg,
         ),
       );
     } catch (err: unknown) {
@@ -207,9 +242,21 @@ export default function ChatPage() {
                 <div className="flex-1 min-w-0">
                   {m.answer ? (
                     <>
-                      <div className="text-sm leading-7 text-foreground whitespace-pre-wrap">
-                        {m.answer}
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground
+                        prose-table:border-collapse
+                        prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:text-xs prose-th:font-semibold prose-th:uppercase prose-th:tracking-wide
+                        prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-td:text-sm prose-td:align-top
+                        prose-tr:even:bg-muted/30
+                        prose-p:leading-7 prose-p:my-2
+                        prose-ul:my-2 prose-li:my-0.5
+                        prose-strong:font-semibold">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {m.answer}
+                        </ReactMarkdown>
                       </div>
+                      {m.sources && m.sources.length > 0 && (
+                        <SourceCitations sources={m.sources} />
+                      )}
                       <CopyButton text={m.answer} />
                     </>
                   ) : (

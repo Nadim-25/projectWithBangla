@@ -17,10 +17,20 @@ const ALLOWED_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
+const CHUNK_STRATEGY_OPTIONS = [
+  { value: "auto", label: "Auto-detect", description: "Let the system decide based on content" },
+  { value: "circular_bn", label: "BB Circular (Bangla)", description: "BRPD / SMESPD / CIB and other circulars in Bengali" },
+  { value: "circular_en", label: "BB Circular (English)", description: "FEPD / BRPD and other short circulars in English" },
+  { value: "chapter_doc", label: "Policy / Chapter Document", description: "Long policy documents with Chapter X / X.Y.Z sections" },
+  { value: "industry_analysis", label: "Industry Analysis", description: "Sector / credit risk analysis reports — images are ignored, tables and narrative are extracted" },
+] as const;
+
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
 
   const [displayName, setDisplayName] = useState("");
+
+  const [chunkStrategy, setChunkStrategy] = useState("auto");
 
   const division = "SME";
 
@@ -124,6 +134,8 @@ export default function UploadPage() {
 
       formData.append("department", department);
 
+      formData.append("chunk_strategy", chunkStrategy);
+
       const res = await fetch(`${BASE_URL}/upload`, {
         method: "POST",
         headers: {
@@ -143,6 +155,7 @@ export default function UploadPage() {
       // reset
       setFile(null);
       setDisplayName("");
+      setChunkStrategy("auto");
     } catch (err: unknown) {
       console.error(err);
 
@@ -173,6 +186,27 @@ export default function UploadPage() {
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Document title"
           />
+        </div>
+
+        {/* CHUNK STRATEGY */}
+        <div className="mb-6">
+          <label className="mb-2 block text-sm font-medium">
+            Chunking Strategy
+          </label>
+          <select
+            value={chunkStrategy}
+            onChange={(e) => setChunkStrategy(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          >
+            {CHUNK_STRATEGY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {CHUNK_STRATEGY_OPTIONS.find((o) => o.value === chunkStrategy)?.description}
+          </p>
         </div>
 
         {/* DRAG AREA */}

@@ -48,6 +48,9 @@ class Message(SQLModel, table=True):
     
 
 
+CHUNK_STRATEGIES = {"auto", "circular_bn", "circular_en", "chapter_doc", "industry_analysis"}
+
+
 class Document(SQLModel, table=True):
     __tablename__ = "document"
 
@@ -60,6 +63,7 @@ class Document(SQLModel, table=True):
     storedFileName: str
     fileExt: str
     processed: bool = Field(default=False)
+    chunk_strategy: Optional[str] = Field(default=None)
     createdAt: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
