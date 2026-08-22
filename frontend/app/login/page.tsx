@@ -68,7 +68,7 @@ export default function LoginPage() {
       }
 
       // ✅ Redirect based on role
-      const role = getRoleFromToken(data.access_token);
+      const role = getRoleFromToken(data.access_token ?? "");
       showFlash("Logged in successfully. Welcome back!", "success");
       if (role === "admin") {
         router.push("/admin-dashboard");
