@@ -15,7 +15,13 @@ export async function registerUser(data: {
     body: JSON.stringify(data),
   });
 
-  const result = await res.json();
+  const text = await res.text();
+  let result: { message?: string; detail?: string } = {};
+  try {
+    result = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error("Server returned an unexpected response. Please try again.");
+  }
 
   if (!res.ok) {
     throw new Error(result.detail || "Registration failed");

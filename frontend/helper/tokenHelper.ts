@@ -58,7 +58,13 @@ export async function changePassword(data: {
     body: JSON.stringify(data),
   });
 
-  const result = await res.json();
+  const text = await res.text();
+  let result: { detail?: string; success?: boolean; message?: string } = {};
+  try {
+    result = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error("Server returned an unexpected response. Please try again.");
+  }
 
   if (!res.ok) {
     throw new Error(result.detail || "Failed to change password");
