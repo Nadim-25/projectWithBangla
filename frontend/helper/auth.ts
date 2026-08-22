@@ -16,16 +16,26 @@ export async function registerUser(data: {
   });
 
   const text = await res.text();
-  let result: { message?: string; detail?: string } = {};
+
+  // Parse — handle both string and array detail (FastAPI 422 uses array)
+  let detail: string | undefined;
   try {
-    result = text ? JSON.parse(text) : {};
+    const json = text ? JSON.parse(text) : {};
+    if (typeof json.detail === "string") {
+      detail = json.detail;
+    } else if (Array.isArray(json.detail) && json.detail.length > 0) {
+      detail = json.detail.map((e: { msg?: string }) => e.msg).join(", ");
+    } else if (json.message) {
+      // success path — just return
+      if (res.ok) return json;
+    }
   } catch {
-    throw new Error("Server returned an unexpected response. Please try again.");
+    throw new Error(`Server error (${res.status}): ${text.slice(0, 120) || "empty response"}`);
   }
 
   if (!res.ok) {
-    throw new Error(result.detail || "Registration failed");
+    throw new Error(detail || `Request failed (${res.status})`);
   }
 
-  return result;
+  return text ? JSON.parse(text) : {};
 }
