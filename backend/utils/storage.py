@@ -1,49 +1,62 @@
 import os
-import httpx
+import io
+from minio import Minio
+from minio.error import S3Error
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-BUCKET = "projectWithBangla"
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
+BUCKET = "projectwithbangla"
 
-def _headers() -> dict:
-    return {
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "apikey": SUPABASE_KEY,
-    }
+_client: Minio | None = None
 
-def _storage_url(object_key: str) -> str:
-    return f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{object_key}"
+
+def _get_client() -> Minio:
+    global _client
+    if _client is None:
+        _client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=MINIO_SECURE,
+        )
+        if not _client.bucket_exists(BUCKET):
+            _client.make_bucket(BUCKET)
+    return _client
 
 
 def upload_file(file_bytes: bytes, object_key: str, content_type: str = "application/octet-stream"):
-    headers = {**_headers(), "Content-Type": content_type, "x-upsert": "true"}
-    r = httpx.post(_storage_url(object_key), content=file_bytes, headers=headers, timeout=30)
-    r.raise_for_status()
+    client = _get_client()
+    client.put_object(
+        BUCKET,
+        object_key,
+        io.BytesIO(file_bytes),
+        length=len(file_bytes),
+        content_type=content_type,
+    )
 
 
 def download_file(object_key: str) -> bytes:
-    r = httpx.get(_storage_url(object_key), headers=_headers(), timeout=30)
-    r.raise_for_status()
-    return r.content
+    client = _get_client()
+    response = client.get_object(BUCKET, object_key)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
 
 
 def delete_file(object_key: str):
     try:
-        import json
-        headers = {**_headers(), "Content-Type": "application/json"}
-        httpx.delete(
-            f"{SUPABASE_URL}/storage/v1/object/{BUCKET}",
-            content=json.dumps({"prefixes": [object_key]}).encode(),
-            headers=headers,
-            timeout=15,
-        )
+        _get_client().remove_object(BUCKET, object_key)
     except Exception:
         pass
 
 
 def file_exists(object_key: str) -> bool:
     try:
-        r = httpx.head(_storage_url(object_key), headers=_headers(), timeout=10)
-        return r.status_code == 200
-    except Exception:
+        _get_client().stat_object(BUCKET, object_key)
+        return True
+    except S3Error:
         return False
