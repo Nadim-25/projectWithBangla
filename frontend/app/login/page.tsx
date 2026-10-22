@@ -33,11 +33,25 @@ export default function LoginPage() {
       setLoading(true);
       setError("");
 
-      const res = await fetch(`${BASE_URL}/user/login1`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      let res: Response;
+      try {
+        res = await fetch(`${BASE_URL}/user/login1`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+          signal: controller.signal,
+        });
+      } catch (fetchErr) {
+        if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+          throw new Error("Server is taking too long to respond. Please try again in a moment.");
+        }
+        throw fetchErr;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const text = await res.text();
       let data: { detail?: string; access_token?: string; requiresPasswordChange?: boolean; userId?: number } = {};
