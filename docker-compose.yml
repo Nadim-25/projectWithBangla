@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   db:
@@ -15,20 +13,6 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
 
-  minio:
-    image: minio/minio
-    container_name: app_minio
-    restart: always
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-    volumes:
-      - minio_data:/data
-    ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
-
   backend:
     build:
       context: ./backend
@@ -39,10 +23,7 @@ services:
       DATABASE_URL: postgresql://appuser:${DB_PASSWORD}@db:5432/appdb
       SECRET_KEY: ${SECRET_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_SECURE: "false"
+      STORAGE_DIR: /app/uploads
       FRONTEND_URL: ${FRONTEND_URL}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
@@ -50,12 +31,13 @@ services:
       MAIL_PORT: "2525"
       MAIL_SERVER: sandbox.smtp.mailtrap.io
       MAIL_FROM_NAME: AI APP
+    volumes:
+      - uploads_data:/app/uploads
     ports:
       - "127.0.0.1:8000:10000"
     depends_on:
       - db
-      - minio
 
 volumes:
   postgres_data:
-  minio_data:
+  uploads_data:
