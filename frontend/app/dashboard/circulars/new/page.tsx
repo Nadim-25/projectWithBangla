@@ -90,9 +90,9 @@ export default function NewCircularsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6">
+    <div className="w-full py-4">
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             New Circulars
             <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
@@ -104,72 +104,106 @@ export default function NewCircularsPage() {
           </p>
         </CardHeader>
 
-        <CardContent className="px-0 sm:px-6">
+        <CardContent className="p-0 sm:px-2">
           {sorted.length === 0 ? (
             <div className="py-20 text-center text-muted-foreground">
               No circulars published in the last 30 days
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[500px]">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="p-4">Circular</th>
-                    <th className="p-4 w-36">
-                      <button
-                        onClick={() => handleSort("published_date")}
-                        className="flex items-center font-semibold hover:text-foreground transition-colors"
-                      >
-                        Published <SortIcon col="published_date" />
-                      </button>
-                    </th>
-                    <th className="p-4 w-36">
-                      <button
-                        onClick={() => handleSort("createdAt")}
-                        className="flex items-center font-semibold hover:text-foreground transition-colors"
-                      >
-                        Uploaded <SortIcon col="createdAt" />
-                      </button>
-                    </th>
-                    <th className="p-4 w-10" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((doc) => (
-                    <tr
-                      key={doc.id}
-                      className="border-b hover:bg-muted/40 cursor-pointer transition-colors"
-                      onClick={() => router.push(`/dashboard/circulars/${doc.id}`)}
-                    >
-                      <td className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 rounded-lg bg-muted p-2 shrink-0">
-                            <FileText className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium leading-snug">{doc.displayName}</p>
-                            {doc.subject && (
-                              <p className="mt-0.5 text-xs text-primary/70 leading-snug line-clamp-2">
-                                {doc.subject}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-sm whitespace-nowrap">
-                        {fmtDate(doc.published_date)}
-                      </td>
-                      <td className="p-4 text-sm text-muted-foreground whitespace-nowrap">
-                        {fmtDate(doc.createdAt)}
-                      </td>
-                      <td className="p-4">
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </td>
+            <>
+              {/* ── MOBILE: card list ── */}
+              <ul className="divide-y sm:hidden">
+                {sorted.map((doc) => (
+                  <li
+                    key={doc.id}
+                    className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
+                    onClick={() => router.push(`/dashboard/circulars/${doc.id}`)}
+                  >
+                    <div className="mt-0.5 rounded-lg bg-muted p-2 shrink-0">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium leading-snug">{doc.displayName}</p>
+                      {doc.subject && (
+                        <p className="mt-0.5 text-xs text-primary/70 leading-snug line-clamp-2">
+                          {doc.subject}
+                        </p>
+                      )}
+                      <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                        <span>
+                          Published:{" "}
+                          <span className="text-foreground">{fmtDate(doc.published_date)}</span>
+                        </span>
+                        <span>Uploaded: {fmtDate(doc.createdAt)}</span>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                  </li>
+                ))}
+              </ul>
+
+              {/* ── DESKTOP: table ── */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-3">Circular</th>
+                      <th className="px-4 py-3 w-36">
+                        <button
+                          onClick={() => handleSort("published_date")}
+                          className="flex items-center font-semibold hover:text-foreground transition-colors"
+                        >
+                          Published <SortIcon col="published_date" />
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 w-36">
+                        <button
+                          onClick={() => handleSort("createdAt")}
+                          className="flex items-center font-semibold hover:text-foreground transition-colors"
+                        >
+                          Uploaded <SortIcon col="createdAt" />
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 w-10" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {sorted.map((doc) => (
+                      <tr
+                        key={doc.id}
+                        className="border-b hover:bg-muted/40 cursor-pointer transition-colors"
+                        onClick={() => router.push(`/dashboard/circulars/${doc.id}`)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 rounded-lg bg-muted p-2 shrink-0">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium leading-snug">{doc.displayName}</p>
+                              {doc.subject && (
+                                <p className="mt-0.5 text-xs text-primary/70 leading-snug line-clamp-2">
+                                  {doc.subject}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          {fmtDate(doc.published_date)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                          {fmtDate(doc.createdAt)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
