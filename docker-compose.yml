@@ -34,7 +34,7 @@ services:
     volumes:
       - uploads_data:/app/uploads
     ports:
-      - "127.0.0.1:8000:10000"
+      - "127.0.0.1:10000:10000"
     depends_on:
       - db
 
