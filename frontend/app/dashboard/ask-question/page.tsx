@@ -104,7 +104,7 @@ export default function AskQuestionPage() {
 
           <div className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-muted-foreground">
             <FileText className="h-4 w-4" />
-            PDF / DOC / DOCX
+            PDF
           </div>
         </div>
       </Card>
