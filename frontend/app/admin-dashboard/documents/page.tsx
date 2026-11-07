@@ -2,11 +2,13 @@
 
 import { useEffect, useState, Fragment } from "react";
 
-import { getAllDocs, processDoc, deleteDoc, updateDocStrategy } from "@/helper/docs";
+import { getAllDocs, processDoc, deleteDoc, updateDocStrategy, updateDoc } from "@/helper/docs";
 
-import { FileText, Trash2, Loader2, RefreshCw, Check, X } from "lucide-react";
+import { FileText, Trash2, Loader2, RefreshCw, Check, X, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+
+import { Input } from "@/components/ui/input";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -23,6 +25,17 @@ function strategyLabel(raw: string | null | undefined) {
   return STRATEGY_OPTIONS.find((o) => o.value === raw)?.label ?? raw;
 }
 
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 type Doc = {
   id: number;
   displayName: string;
@@ -32,6 +45,9 @@ type Doc = {
   fileExt: string;
   processed: boolean;
   chunk_strategy: string | null;
+  subject: string | null;
+  published_date: string | null;
+  createdAt: string | null;
 };
 
 export default function DocumentsPage() {
@@ -47,6 +63,11 @@ export default function DocumentsPage() {
   const [reprocessId, setReprocessId] = useState<number | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState("auto");
   const [reprocessing, setReprocessing] = useState(false);
+
+  // Inline edit panel
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editFields, setEditFields] = useState({ displayName: "", subject: "", published_date: "" });
+  const [saving, setSaving] = useState(false);
 
   // ======================================
   // LOAD DOCS
@@ -94,6 +115,42 @@ export default function DocumentsPage() {
   const closeReprocess = () => {
     setReprocessId(null);
     setSelectedStrategy("auto");
+  };
+
+  // ======================================
+  // EDIT
+  // ======================================
+  const openEdit = (doc: Doc) => {
+    setEditId(doc.id);
+    setEditFields({
+      displayName: doc.displayName,
+      subject: doc.subject ?? "",
+      published_date: doc.published_date ?? "",
+    });
+  };
+
+  const closeEdit = () => {
+    setEditId(null);
+    setEditFields({ displayName: "", subject: "", published_date: "" });
+  };
+
+  const confirmEdit = async (docId: number) => {
+    try {
+      setSaving(true);
+      await updateDoc(docId, editFields);
+      setDocs((prev) =>
+        prev.map((d) =>
+          d.id === docId
+            ? { ...d, displayName: editFields.displayName, subject: editFields.subject || null, published_date: editFields.published_date || null }
+            : d,
+        ),
+      );
+      closeEdit();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ======================================
@@ -166,13 +223,12 @@ export default function DocumentsPage() {
 
         <CardContent className="px-0 sm:px-6">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px]">
+            <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="border-b text-left">
                   <th className="p-4">Document</th>
-                  <th className="p-4">Division</th>
-                  <th className="p-4">Department</th>
-                  <th className="p-4">Type</th>
+                  <th className="p-4">Published Date</th>
+                  <th className="p-4">Upload Date</th>
                   <th className="p-4">Strategy</th>
                   <th className="p-4">Status</th>
                   <th className="p-4">Actions</th>
@@ -191,6 +247,11 @@ export default function DocumentsPage() {
                           </div>
                           <div>
                             <p className="font-medium">{doc.displayName}</p>
+                            {doc.subject && (
+                              <p className="text-xs text-primary/70 max-w-[260px] truncate" title={doc.subject}>
+                                {doc.subject}
+                              </p>
+                            )}
                             <p className="text-xs text-muted-foreground">
                               {doc.fileName}
                             </p>
@@ -198,15 +259,16 @@ export default function DocumentsPage() {
                         </div>
                       </td>
 
-                      {/* DIVISION */}
-                      <td className="p-4">{doc.division}</td>
+                      {/* PUBLISHED DATE */}
+                      <td className="p-4 text-sm">
+                        {doc.published_date ? fmtDate(doc.published_date) : (
+                          <span className="text-muted-foreground">Not set</span>
+                        )}
+                      </td>
 
-                      {/* DEPARTMENT */}
-                      <td className="p-4">{doc.department}</td>
-
-                      {/* TYPE */}
-                      <td className="p-4 uppercase">
-                        {doc.fileExt.replace(".", "")}
+                      {/* UPLOAD DATE */}
+                      <td className="p-4 text-sm text-muted-foreground">
+                        {fmtDate(doc.createdAt)}
                       </td>
 
                       {/* STRATEGY */}
@@ -247,6 +309,18 @@ export default function DocumentsPage() {
                             )}
                           </Button>
 
+                          {/* EDIT (toggle panel) */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              editId === doc.id ? closeEdit() : openEdit(doc)
+                            }
+                            title="Edit document name, subject, published date"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+
                           {/* REPROCESS (toggle panel) */}
                           {doc.processed && (
                             <Button
@@ -284,7 +358,7 @@ export default function DocumentsPage() {
                     {/* INLINE REPROCESS PANEL */}
                     {reprocessId === doc.id && (
                       <tr className="bg-muted/30">
-                        <td colSpan={7} className="px-6 py-4">
+                        <td colSpan={6} className="px-6 py-4">
                           <div className="flex flex-wrap items-center gap-4">
                             <span className="text-sm font-medium">
                               Re-process as:
@@ -343,6 +417,75 @@ export default function DocumentsPage() {
                               All existing embeddings will be deleted and regenerated with the same strategy.
                             </p>
                           )}
+                        </td>
+                      </tr>
+                    )}
+
+                    {/* INLINE EDIT PANEL */}
+                    {editId === doc.id && (
+                      <tr className="bg-muted/30">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="flex flex-wrap items-end gap-4">
+                            <div>
+                              <label className="mb-1 block text-xs font-medium">
+                                Display Name
+                              </label>
+                              <Input
+                                value={editFields.displayName}
+                                onChange={(e) =>
+                                  setEditFields((f) => ({ ...f, displayName: e.target.value }))
+                                }
+                                className="h-8 w-56 text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium">
+                                Subject / Title
+                              </label>
+                              <Input
+                                value={editFields.subject}
+                                onChange={(e) =>
+                                  setEditFields((f) => ({ ...f, subject: e.target.value }))
+                                }
+                                placeholder="Circular title shown in source box"
+                                className="h-8 w-80 text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium">
+                                Published Date
+                              </label>
+                              <Input
+                                type="date"
+                                value={editFields.published_date}
+                                onChange={(e) =>
+                                  setEditFields((f) => ({ ...f, published_date: e.target.value }))
+                                }
+                                className="h-8 w-40 text-sm"
+                              />
+                            </div>
+                            <Button
+                              size="sm"
+                              disabled={saving}
+                              onClick={() => confirmEdit(doc.id)}
+                            >
+                              {saving ? (
+                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Check className="mr-1 h-4 w-4" />
+                              )}
+                              Save
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={saving}
+                              onClick={closeEdit}
+                            >
+                              <X className="mr-1 h-4 w-4" />
+                              Cancel
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     )}

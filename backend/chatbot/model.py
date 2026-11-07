@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, Field, Relationship
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as _date
 from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import Column, ForeignKey
 
@@ -40,6 +40,7 @@ class Message(SQLModel, table=True):
     )
     role: str
     content: str
+    sources: Optional[str] = Field(default=None)  # JSON-serialised source list
     chat: Optional["Chat"] = Relationship(back_populates="messages")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -64,6 +65,8 @@ class Document(SQLModel, table=True):
     fileExt: str
     processed: bool = Field(default=False)
     chunk_strategy: Optional[str] = Field(default=None)
+    subject: Optional[str] = Field(default=None)
+    published_date: Optional[_date] = Field(default=None)
     createdAt: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare, LogOut } from "lucide-react";
+import { MessageSquare, LogOut, BookMarked, Sparkles } from "lucide-react";
 
 import Link from "next/link";
 
@@ -48,6 +48,31 @@ export function AppSidebarFront() {
           </Link>
         )}
         <ScrollArea className="h-[calc(100vh-120px)] px-2 mt-5">
+          {/* CIRCULAR NAVIGATION */}
+          <div className="mb-3 space-y-1">
+            <Link
+              href="/dashboard/circulars"
+              onClick={closeOnMobile}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted text-sm"
+            >
+              <BookMarked className="h-4 w-4 shrink-0" />
+              All Circulars
+            </Link>
+            <Link
+              href="/dashboard/circulars/new"
+              onClick={closeOnMobile}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted text-sm"
+            >
+              <Sparkles className="h-4 w-4 shrink-0 text-amber-500" />
+              <span>New Circulars</span>
+              <span className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                30d
+              </span>
+            </Link>
+          </div>
+
+          <div className="mb-2 h-px bg-border" />
+
           {/* NEW CHAT */}
           <Link
             href="/dashboard/ask-question"

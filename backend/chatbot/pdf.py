@@ -2,7 +2,10 @@ import pdfplumber
 from docx import Document as DocxDocument
 import os
 import re
+import logging
 from collections import Counter
+
+_log = logging.getLogger(__name__)
 
 # Auto-locate Tesseract on Windows when it is not on PATH
 def _configure_tesseract() -> None:
@@ -91,6 +94,62 @@ _OCR_PCT_RE     = re.compile(r'([০-৯]+(?:[.,][০-৯]+)?)\s*%')
 # Matches ASCII-only digit percentages — used on RAW Tesseract output before normalization
 _ASCII_PCT_RE   = re.compile(r'(\d+(?:[.,]\d+)?)\s*%')
 
+# Word-level OCR correction table for confirmed Tesseract misreads in Bengali
+# circulars.  Only entries that cannot be valid Bengali in any context are
+# included — context-ambiguous substitutions are excluded to avoid false fixes.
+#
+# Applied in _normalize_ocr_bn (Step 3) AFTER digit normalisation so the
+# corrected output uses Bengali digits throughout.
+_OCR_WORD_FIXES: list[tuple[str, str]] = [
+    # ঋণ (loan/debt) — Tesseract consistently misreads this conjunct as খণ or খঝণ
+    ("খণগ্রহীতা",   "ঋণগ্রহীতা"),
+    ("খঝণগ্রহীতা",  "ঋণগ্রহীতা"),
+    ("খণপ্রহীতা",   "ঋণগ্রহীতা"),   # occasional variant with প instead of গ
+    # কার্যরত (operating/active) — misread as PLATS or similar Latin artifacts
+    ("PLATS",        "কার্যরত"),
+    # কেন্দ্রীয় (central) — misread as rater in letterhead
+    ("(rater",       "(কেন্দ্রীয়"),
+    # খেলাপী (defaulter) — গ misread as পী by Tesseract
+    ("খেলাগী AAT",  "খেলাপী ঋণগ্রহীতা"),   # phrase-level: AAT is misread ঋণগ্রহীতা
+    ("খেলাগী",      "খেলাপী"),              # standalone fallback
+    # ত্রৈ (tri-/quarterly) — misread as ব্রি/ব্রে
+    ("ব্রিমাসিক",   "ত্রৈমাসিক"),
+    ("ব্রেমাসিক",   "ত্রৈমাসিক"),
+    ("ব্রেমাস",     "ত্রৈমাস"),
+    ("ব্রিমাস",     "ত্রৈমাস"),
+    # ফাইন্যান্স (Finance) — truncated by Tesseract; phrase-level to avoid
+    # replacing the legitimate word ফাইন্যাল (final) elsewhere
+    ("ফাইন্যাল কোম্পানি",  "ফাইন্যান্স কোম্পানি"),
+    ("ফাইন্যা কোম্পানি",   "ফাইন্যান্স কোম্পানি"),
+    ("ফাইন্যাস কোম্পানি",  "ফাইন্যান্স কোম্পানি"),
+    # এক্সিট (exit) — ক্স conjunct misread as কি
+    ("একিট",  "এক্সিট"),
+    # বিশেষ KAT — KAT is misread এক্সিট in one-time exit circulars
+    ("বিশেষ KAT",  "বিশেষ এক্সিট"),
+    # ঋণত্রাস (loan stress) — ত্র conjunct broken into ত্ + া
+    ("ঋণত্াস",  "ঋণত্রাস"),
+    # অভ্যন্তরীণ (internal) — রীণ misread as রাণ
+    ("অভ্যন্তরাণ",  "অভ্যন্তরীণ"),
+    # € bracket artifact — € (U+20AC) used as opening parenthesis by some fonts
+    ("€",  "("),
+]
+
+# Bengali calendar (Bangla) month names — used to strip Bengali calendar dates
+# so only the Gregorian date is kept in circular headers.
+_BN_CAL_MONTH_PAT = (
+    'বৈশাখ|জ্যৈষ্ঠ|আষাঢ়|শ্রাবণ|ভাদ্র|আশ্বিন|'
+    'কার্তিক|অগ্রহায়ণ|পৌষ|মাঘ|ফাল্গুন|চৈত্র'
+)
+# Well-formed Bengali calendar date: "০৯ শ্রাবণ ১৪৩২"
+_BN_CAL_DATE_RE = re.compile(
+    r'[০-৯]{1,2}\s+(?:' + _BN_CAL_MONTH_PAT + r')\s+[১][৩-৫][০-৯][০-৯]\b'
+)
+# Garbled Bengali calendar year fragment on তারিখ: lines:
+# any short non-whitespace token (e.g. "পিস") followed by a Bengali year
+# in the 1300-1599 range (e.g. "১৩২" — OCR dropped a digit from "১৪৩২").
+# Applied ONLY on lines containing "তারিখ" to avoid false positives elsewhere.
+_BN_CAL_YEAR_FRAG_RE = re.compile(r'\S{1,8}\s+[১][৩-৫][০-৯]{1,3}\b')
+
 # Bengali month names used to anchor date-context letter→digit fixes.
 _BN_MONTH_PAT = (
     'জানুয়ারি|ফেব্রুয়ারি|মার্চ|এপ্রিল|মে|জুন|'
@@ -108,6 +167,10 @@ _DATE_FIX_RE = re.compile(r'\b([oOiIlLbBqQ0-9]{1,2})\s+(' + _BN_MONTH_PAT + r')\
 #   q/Q → 9   (Bengali ৯ curl resembles q)
 _DATE_LETTER_FIX = str.maketrans('oOiIlLbBqQ', '0011118899')
 
+# খণ → ঋণ (loan/debt): safe when NOT followed by ্ which would indicate খণ্ড
+# (fragment — a real Bengali word).  Applied via regex in _normalize_ocr_bn.
+_KHN_TO_RN_RE = re.compile(r'খণ(?!্)')
+
 
 def _normalize_ocr_bn(text: str) -> str:
     """Post-process Tesseract ben+eng output for Bengali circulars.
@@ -122,13 +185,33 @@ def _normalize_ocr_bn(text: str) -> str:
     Step 2 — global ASCII digit normalization:
       Convert all remaining ASCII 0-9 to Bengali ০-৯.
       e.g.  "নং-04"  →  "নং-০৪"
+
+    Step 3 — word-level OCR correction:
+      Replace confirmed Tesseract misreads (e.g. খণগ্রহীতা → ঋণগ্রহীতা,
+      ব্রিমাসিক → ত্রৈমাসিক) using the _OCR_WORD_FIXES table.
+      Only entries that cannot be valid Bengali in any context are included.
+
+    Step 4 — strip Bengali calendar dates (keep Gregorian dates only):
+      Remove well-formed Bengali calendar dates ("০৯ শ্রাবণ ১৪৩২") everywhere.
+      On lines containing "তারিখ", also strip garbled calendar fragments
+      ("পিস ১৩২") where the month name was misread by Tesseract.
     """
     def _fix_day(m: re.Match) -> str:
         day = m.group(1).translate(_DATE_LETTER_FIX).translate(_ASCII_TO_BN_DIGIT)
         return day + ' ' + m.group(2)
 
     text = _DATE_FIX_RE.sub(_fix_day, text)
-    return text.translate(_ASCII_TO_BN_DIGIT)
+    text = text.translate(_ASCII_TO_BN_DIGIT)
+    for wrong, correct in _OCR_WORD_FIXES:
+        if wrong in text:
+            text = text.replace(wrong, correct)
+    text = _KHN_TO_RN_RE.sub('ঋণ', text)
+    text = _BN_CAL_DATE_RE.sub('', text)
+    text = '\n'.join(
+        _BN_CAL_YEAR_FRAG_RE.sub('', line) if 'তারিখ' in line else line
+        for line in text.split('\n')
+    )
+    return text
 
 
 def _patch_ocr_pct_ascii(raw_ocr: str, plumber_text: str) -> str:
@@ -324,9 +407,11 @@ MAX_NARRATIVE_CHARS = 2400   # chapter_doc / English circular narrative
 MAX_BN_CHARS        = 1500   # Bengali section/clause blocks
 OVERLAP_CHARS       = 200
 
-# Maximum header lines extracted from page 1 and repeated in continuation chunks
-# for short (≤ 3 page) circulars.
-_CIRCULAR_HEADER_LINES = 8
+# Maximum header lines extracted from page 1 and repeated in continuation chunks.
+# BB circulars often have bilingual letterheads (Bengali + English) or 4-5 lines
+# of institution/department name before the circular number and date — 14 lines
+# ensures both are always captured even for the most verbose headers.
+_CIRCULAR_HEADER_LINES = 14
 
 
 # ── text extraction ───────────────────────────────────────────────────────────
@@ -339,6 +424,7 @@ def extract_doc_text(file_path: str):
 def extract_text_ocr(file_path: str, lang: str = 'eng') -> str:
     import pypdfium2 as pdfium
     import pytesseract
+    from pytesseract import Output as _TessOutput
 
     text = ""
     pdf = pdfium.PdfDocument(file_path)
@@ -347,7 +433,8 @@ def extract_text_ocr(file_path: str, lang: str = 'eng') -> str:
             page = pdf[i]
             bitmap = page.render(scale=2)
             pil_image = bitmap.to_pil()
-            page_text = pytesseract.image_to_string(pil_image, lang=lang)
+            raw = pytesseract.image_to_string(pil_image, lang=lang, output_type=_TessOutput.BYTES)
+            page_text = raw.decode('utf-8', errors='replace')
             if page_text:
                 text += page_text + "\n"
     finally:
@@ -552,6 +639,7 @@ def _chunk_bn_page_wise(
             "chapter": chapter_val,
             "section": "",
             "page": page_num,
+            "subject": heading_info["subject"] if heading_info else "",
         })
 
     return chunks
@@ -642,8 +730,11 @@ def _detect_doc_type(file_path: str) -> str:
         return 'chapter_doc'
 
     safe_chars = max(total_chars, 1)
-    # Pure image scan: pdfplumber extracted no text at all → must use OCR
-    if total_chars == 0:
+    # Pure image scan or near-empty text layer (e.g. only a watermark URL):
+    # fewer than 100 chars per sampled page means the PDF is essentially a
+    # scanned image — route through the OCR path regardless of language.
+    sampled_pages = min(5, n_pages)
+    if total_chars / max(sampled_pages, 1) < 100:
         return 'circular_bn'
     # Bengali ratio > 15% OR ≥ 20 CID sequences per page → Bengali circular
     if bengali_chars / safe_chars > 0.15 or cid_seqs / max(n_pages, 1) >= 20:
@@ -908,7 +999,25 @@ _DEPT_PATTERNS: list[tuple[str, str]] = [
     (r'জিবিসিএসআরডি|gbcsrd',          'GBCSRD'),
     (r'সিআইবি|cib\b',                 'CIB'),
     (r'ডিবিআরটি|dbrt',                'DBRT'),
+    (r'ডিএফআইএম|dfim',                'DFIM'),
 ]
+
+# Matches a well-formed Bengali circular number line after OCR:
+#   "ডিএফআইএম সার্কুলার লেটার নং-১৭"
+#   "বিআরপিডি সার্কুলার নং-০৫"
+# Captures the whole line up to 80 chars.
+_BN_CIRC_REF_SCAN_RE = re.compile(
+    r'([^\n]*সার্কুলার[^\n]*নং\s*[-–]?\s*[০-৯\d][^\n]{0,40})',
+    re.MULTILINE,
+)
+
+# Bengali Gregorian date anywhere in text: "২৪ জুলাই ২০২৫"
+_BN_GREGORIAN_DATE_SCAN_RE = re.compile(
+    r'([০-৯]{1,2}\s+'
+    r'(?:জানুয়ারি|ফেব্রুয়ারি|মার্চ|এপ্রিল|মে|জুন|'
+    r'জুলাই|আগস্ট|সেপ্টেম্বর|অক্টোবর|নভেম্বর|ডিসেম্বর)'
+    r'\s+[১২][০-৯]{3})'
+)
 
 
 def _parse_bn_circular_heading(first_line: str) -> dict | None:
@@ -930,13 +1039,19 @@ def _parse_bn_circular_heading(first_line: str) -> dict | None:
     if len(parts) < 3:
         return None
 
-    circular_no = parts[1].strip()
-    # Second part must look like a circular reference
-    if not re.search(r'নং|No\.|circular|সাকু', circular_no, re.IGNORECASE):
+    # Find the circular reference by scanning backwards — this handles subjects
+    # that themselves contain commas (e.g. Bijoy-encoded "KzwUi, gvB‡μv, ÿz`ª …")
+    circular_no_idx = None
+    for i in range(len(parts) - 1, 0, -1):
+        if re.search(r'নং|No\.|circular|সাকু', parts[i], re.IGNORECASE):
+            circular_no_idx = i
+            break
+    if circular_no_idx is None:
         return None
 
-    subject    = parts[0].strip()
-    issue_date = ', '.join(parts[2:]).strip()
+    circular_no = parts[circular_no_idx].strip()
+    subject     = ', '.join(parts[:circular_no_idx]).strip()
+    issue_date  = ', '.join(parts[circular_no_idx + 1:]).strip()
 
     department = ""
     for pattern, code in _DEPT_PATTERNS:
@@ -954,6 +1069,30 @@ def _parse_bn_circular_heading(first_line: str) -> dict | None:
     }
 
 
+def _scan_bn_circular_identity(page_text: str) -> str:
+    """
+    Third-level fallback heading extractor for Bengali BB circulars.
+
+    Called when both _parse_bn_circular_heading and the legacy regex fail.
+    Scans the first ~2000 chars of OCR'd page 1 for a circular number line
+    ("… সার্কুলার … নং-N") and a Bengali Gregorian date ("DD Month YYYY").
+
+    Returns a chapter string "circular_no | issue_date" ready for DB storage,
+    or "" if neither pattern is found.
+    """
+    sample = page_text[:2000]
+
+    circ_m = _BN_CIRC_REF_SCAN_RE.search(sample)
+    circ_no = circ_m.group(1).strip()[:80] if circ_m else ""
+
+    date_m = _BN_GREGORIAN_DATE_SCAN_RE.search(sample)
+    issue_date = date_m.group(1).strip() if date_m else ""
+
+    if not circ_no:
+        return ""
+    return ' | '.join(filter(None, [circ_no, issue_date]))
+
+
 def _ocr_pages_bn(file_path: str, scale: float = 2.5) -> list[dict]:
     """
     OCR each page at high resolution using Tesseract with Bengali + English.
@@ -961,14 +1100,26 @@ def _ocr_pages_bn(file_path: str, scale: float = 2.5) -> list[dict]:
 
     Config notes:
     --oem 3        use LSTM + legacy engine (most accurate for mixed script)
-    --psm 6        assume a uniform block of text — prevents Tesseract from
-                   treating English uppercase blocks (CMSME, SMESPD) as noise
+    --psm 3        fully automatic page segmentation — handles mixed layouts
+                   (complex tables + regular text) better than psm 6 which
+                   assumes a single uniform block and misses multi-column rows
     preserve_interword_spaces=1  keeps gaps between Bengali and English tokens
+
+    Output is read as raw bytes and decoded as UTF-8 to avoid the Windows
+    'charmap' codec error that occurs when Tesseract emits Bengali Unicode
+    and pytesseract tries to read the temp file with the system codepage.
     """
     import pypdfium2 as pdfium
     import pytesseract
+    from pytesseract import Output as _TessOutput
 
-    _cfg = r'--oem 3 --psm 6 -c preserve_interword_spaces=1'
+    _cfg = r'--oem 3 --psm 3 -c preserve_interword_spaces=1'
+
+    def _run(img, lang, cfg):
+        raw = pytesseract.image_to_string(
+            img, lang=lang, config=cfg, output_type=_TessOutput.BYTES
+        )
+        return raw.decode('utf-8', errors='replace').strip()
 
     results = []
     pdf = pdfium.PdfDocument(file_path)
@@ -978,16 +1129,147 @@ def _ocr_pages_bn(file_path: str, scale: float = 2.5) -> list[dict]:
             bitmap = page.render(scale=scale)
             pil_image = bitmap.to_pil()
             try:
-                text = pytesseract.image_to_string(pil_image, lang='ben+eng', config=_cfg)
+                text = _run(pil_image, 'ben+eng', _cfg)
             except pytesseract.TesseractError:
                 try:
-                    text = pytesseract.image_to_string(pil_image, lang='ben', config=_cfg)
+                    text = _run(pil_image, 'ben', _cfg)
                 except pytesseract.TesseractError:
-                    text = pytesseract.image_to_string(pil_image, config=_cfg)
-            results.append({"page": i + 1, "text": text.strip()})
+                    text = _run(pil_image, 'eng', _cfg)
+            results.append({"page": i + 1, "text": text})
     finally:
         pdf.close()
     return results
+
+
+def _vision_extract_table_pages(
+    file_path: str,
+    page_nums: list[int],
+    circular_ref: str = "",
+) -> dict[int, str]:
+    """
+    For each page number in page_nums, render to PNG and extract tables
+    via GPT-4o vision. Returns {page_num: markdown_table_text}.
+    Pages where no table is found or any API error are omitted so this
+    never blocks document processing.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+
+    if not page_nums:
+        _log.warning("[vision] called with empty page_nums — skipping")
+        return {}
+    try:
+        import base64
+        from io import BytesIO
+        import pypdfium2 as pdfium
+        from openai import OpenAI
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            _log.error("[vision] OPENAI_API_KEY not set — vision extraction disabled")
+            return {}
+
+        openai_client = OpenAI(api_key=api_key)
+        _log.info("[vision] starting extraction for %d pages of %s", len(page_nums), file_path)
+
+        pdf_doc = pdfium.PdfDocument(file_path)
+        results: dict[int, str] = {}
+
+        try:
+            for page_num in page_nums:
+                try:
+                    page = pdf_doc[page_num - 1]
+                    bitmap = page.render(scale=2.0)
+                    pil_image = bitmap.to_pil()
+                    buf = BytesIO()
+                    pil_image.save(buf, format="PNG")
+                    img_bytes = buf.getvalue()
+                    b64 = base64.b64encode(img_bytes).decode()
+                    _log.info("[vision] page %d — image size %.1f KB", page_num, len(img_bytes) / 1024)
+
+                    circ_note = f" ({circular_ref})" if circular_ref else ""
+                    resp = openai_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{b64}",
+                                        "detail": "high",
+                                    },
+                                },
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        f"This is page {page_num} of a Bangladesh Bank "
+                                        f"circular{circ_note}.\n"
+                                        "Extract every table on this page as markdown.\n"
+                                        "Rules:\n"
+                                        "- Copy Bengali text and all numbers exactly as written — do not translate or round.\n"
+                                        "- Use pipe-separated markdown rows with a header separator row (|---|---|).\n"
+                                        "- IMPORTANT: If a cell spans multiple rows (merged/grouped cell), "
+                                        "repeat its text in EVERY row it covers. Never leave a cell blank "
+                                        "because it was merged — always fill it with the correct repeated value. "
+                                        "Example: if 'ক্ষুদ্র শিল্প' spans 3 rows, every one of those 3 rows "
+                                        "must have 'ক্ষুদ্র শিল্প' in that column.\n"
+                                        "- Separate multiple tables with a blank line.\n"
+                                        "- If this page has no tables, reply with exactly: NO_TABLE"
+                                    ),
+                                },
+                            ],
+                        }],
+                        max_tokens=2000,
+                        temperature=0,
+                    )
+                    text = resp.choices[0].message.content.strip()
+                    _log.info("[vision] page %d — GPT-4o response: %s", page_num, text[:120])
+                    if text and text != "NO_TABLE":
+                        results[page_num] = text
+                except Exception as page_err:
+                    _log.error("[vision] page %d failed: %s", page_num, page_err, exc_info=True)
+                    continue
+        finally:
+            pdf_doc.close()
+
+        _log.info("[vision] done — tables found on pages: %s", list(results.keys()))
+        return results
+
+    except Exception as outer_err:
+        _log.error("[vision] outer failure: %s", outer_err, exc_info=True)
+        return {}
+
+
+def _build_vision_chunks(
+    vision_tables: dict[int, str],
+    heading_info: "dict | None",
+    circular_ref: str,
+) -> list[dict]:
+    """Wrap vision-extracted table markdown in storable chunk dicts."""
+    chunks: list[dict] = []
+    for page_num, table_md in sorted(vision_tables.items()):
+        if not table_md.strip():
+            continue
+        if heading_info:
+            meta = heading_info["chapter"]
+            prefix = f"[{meta} | Page {page_num}]\n"
+            chapter_val = meta
+        elif circular_ref:
+            prefix = f"[{circular_ref} | Page {page_num}]\n"
+            chapter_val = circular_ref
+        else:
+            prefix = f"[Page {page_num}]\n"
+            chapter_val = ""
+        chunks.append({
+            "content": prefix + "[Vision-extracted table — high accuracy]\n" + table_md,
+            "type": "table_vision",
+            "chapter": chapter_val,
+            "section": "",
+            "page": page_num,
+            "subject": heading_info["subject"] if heading_info else "",
+        })
+    return chunks
 
 
 def _chunk_circular_bn(file_path: str) -> list:
@@ -1020,8 +1302,10 @@ def _chunk_circular_bn(file_path: str) -> list:
             # ≥ 20 CID sequences → font not decoded at all, use OCR
             if sample_text.count("(cid:") >= 20:
                 use_ocr = True
-            # Pure image scan: no text layer at all
-            elif len(sample_text) == 0:
+            # Pure image scan or near-empty text layer (e.g. watermark only):
+            # fewer than 100 chars per sampled page means the PDF is a scanned
+            # image — the tiny text layer is noise, not real document content.
+            elif len(sample_text) / max(min(8, n_pages), 1) < 100:
                 use_ocr = True
             elif len(sample_text) > 0:
                 # Greek/Cyrillic font-substitution artifacts > 5 %
@@ -1085,25 +1369,30 @@ def _chunk_circular_bn(file_path: str) -> list:
                 }
                 for p in page_texts
             ]
-        except Exception:
+        except Exception as _ocr_err:
+            _log.error("[pdf] OCR failed for %s: %s", file_path, _ocr_err, exc_info=True)
             page_texts = _pdfplumber_pages(file_path)
     else:
         page_texts = _pdfplumber_pages(file_path)
 
-    # ── Extract tables via pdfplumber for every page (always — OCR has none) ──
+    # ── Extract tables via pdfplumber (only for native-text PDFs) ──
+    # For Bijoy-encoded PDFs (use_ocr=True) pdfplumber table cells contain
+    # garbled Latin — skip table extraction entirely. The OCR text already
+    # covers the full page content including table text in flat form.
     _page_tables: dict[int, list] = {}
-    try:
-        with pdfplumber.open(file_path) as pdf:
-            for pg_idx, page in enumerate(pdf.pages, 1):
-                tbls = [
-                    tbl.extract()
-                    for tbl in page.find_tables()
-                    if tbl.extract() and len(tbl.extract()) >= 2
-                ]
-                if tbls:
-                    _page_tables[pg_idx] = tbls
-    except Exception:
-        pass
+    if not use_ocr:
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                for pg_idx, page in enumerate(pdf.pages, 1):
+                    tbls = [
+                        tbl.extract()
+                        for tbl in page.find_tables()
+                        if tbl.extract() and len(tbl.extract()) >= 2
+                    ]
+                    if tbls:
+                        _page_tables[pg_idx] = tbls
+        except Exception:
+            pass
 
     # ── Heading extraction ────────────────────────────────────────────────────
     # Try the user-added structured heading (first non-empty line of page 1).
@@ -1123,16 +1412,52 @@ def _chunk_circular_bn(file_path: str) -> list:
         circ_match = re.search(
             r'(?:সাকু[রু্]*লার\s*(?:নং|No)[^\n]{0,50}'
             r'|Circular\s*(?:No|Letter)[^\n]{0,50}'
-            r'|(?:BRPD|SMESPD|DOS|FEPD|GBCSRD|BFID)[^\n]{0,60})',
+            r'|(?:BRPD|SMESPD|DOS|FEPD|GBCSRD|BFID|DFIM)[^\n]{0,60})',
             first_page_text, re.IGNORECASE,
         )
         if circ_match:
             circular_ref = circ_match.group(0).strip()[:80]
 
+    # Third fallback: scan page 1 OCR text for "… সার্কুলার … নং-N" and date.
+    # Handles BB circulars from departments not in the legacy list (e.g. DFIM).
+    if not heading_info and not circular_ref:
+        scanned = _scan_bn_circular_identity(first_page_text)
+        if scanned:
+            circular_ref = scanned
+
+    # ── Vision table extraction for scanned/Bijoy Bengali PDFs ───────────────
+    # pdfplumber detects table bounding boxes via PDF vector structure even
+    # when cell text is garbled (Bijoy encoding). For those pages, GPT-4o
+    # vision reads the rendered page image and produces clean, structured
+    # markdown that Tesseract flat OCR cannot preserve.
+    _vision_tables: dict[int, str] = {}
+    if use_ocr:
+        try:
+            # Run vision on every page — for scanned/Bijoy PDFs the table borders
+            # are rarely in the PDF vector structure so pdfplumber.find_tables()
+            # returns nothing. GPT-4o returns "NO_TABLE" for text-only pages so
+            # scanning all pages is safe and guarantees tables are captured.
+            _tbl_pages = list(range(1, n_pages + 1))
+            _vision_tables = _vision_extract_table_pages(
+                file_path,
+                _tbl_pages,
+                heading_info["circular_no"] if heading_info else circular_ref,
+            )
+        except Exception:
+            pass
+
     # Short circulars (≤ 8 pages): chunk page-wise, repeating the page-1
     # header in every continuation page so each chunk is self-contained.
     if 0 < n_pages <= 8:
-        return _chunk_bn_page_wise(page_texts, heading_info, circular_ref, _page_tables)
+        result = _chunk_bn_page_wise(page_texts, heading_info, circular_ref, _page_tables)
+        if _vision_tables:
+            result += _build_vision_chunks(_vision_tables, heading_info, circular_ref)
+        return result
+
+    # OCR path (Bijoy PDFs): use a larger chunk ceiling so dense tables
+    # (e.g. CMSME classification: ~2250 chars) stay in one chunk instead of
+    # being split across multiple chunks and losing row context.
+    _max_bn = 3000 if use_ocr else MAX_BN_CHARS
 
     chunks = []
     current_section = ""
@@ -1140,31 +1465,32 @@ def _chunk_circular_bn(file_path: str) -> list:
     buf = ""
     last_page = page_texts[-1]["page"] if page_texts else 1
 
-    def _bn_prefix(sec: str) -> tuple[str, str]:
+    def _bn_prefix(sec: str, pg: int = 0) -> tuple[str, str]:
         """Return (prefix_str, chapter_val) for the current circular identity."""
         top_part = f" | {current_top}" if current_top else ""
         sec_part = f" | Section {sec}" if sec else ""
+        page_part = f" | Page {pg}" if pg else ""
         if heading_info:
             meta = heading_info["chapter"]
             return (
-                f"[{meta}{top_part}{sec_part}]\nবিষয়: {heading_info['subject']}\n",
+                f"[{meta}{top_part}{sec_part}{page_part}]\nবিষয়: {heading_info['subject']}\n",
                 heading_info["chapter"],
             )
         if circular_ref and sec:
-            return f"[{circular_ref}{top_part} | Section {sec}]\n", circular_ref
+            return f"[{circular_ref}{top_part} | Section {sec}{page_part}]\n", circular_ref
         if circular_ref:
-            return f"[{circular_ref}{top_part}]\n", circular_ref
+            return f"[{circular_ref}{top_part}{page_part}]\n", circular_ref
         if sec:
-            return f"[{top_part.lstrip(' | ')}Section {sec}]\n", ""
+            return f"[{top_part.lstrip(' | ')}Section {sec}{page_part}]\n", ""
         if current_top:
-            return f"[{current_top}]\n", ""
+            return f"[{current_top}{page_part}]\n", ""
         return "", ""
 
     def _flush_bn(buf_text: str, sec: str, pg: int) -> None:
         text = buf_text.strip()
         if not text:
             return
-        prefix, chapter_val = _bn_prefix(sec)
+        prefix, chapter_val = _bn_prefix(sec, pg)
         chunk_type = "circular_section" if sec else "circular_narrative"
         chunks.append({
             "content": prefix + text,
@@ -1172,12 +1498,13 @@ def _chunk_circular_bn(file_path: str) -> list:
             "chapter": chapter_val,
             "section": sec,
             "page": pg,
+            "subject": heading_info["subject"] if heading_info else "",
         })
 
     def _emit_tables(pg: int) -> None:
         """Serialize and emit all pdfplumber tables for the given page."""
         for table_data in _page_tables.get(pg, []):
-            prefix, chapter_val = _bn_prefix(current_section)
+            prefix, chapter_val = _bn_prefix(current_section, pg)
             serialized = _serialize_table(table_data, current_section)
             if not serialized.strip():
                 continue
@@ -1188,6 +1515,7 @@ def _chunk_circular_bn(file_path: str) -> list:
                     "chapter": chapter_val,
                     "section": current_section,
                     "page": pg,
+                    "subject": heading_info["subject"] if heading_info else "",
                 })
 
     for page_info in page_texts:
@@ -1202,11 +1530,21 @@ def _chunk_circular_bn(file_path: str) -> list:
             clause_match = BN_CLAUSE_RE.match(line)
 
             if sec_match:
-                # Decimal sub-section (১.১, ২.৩.১) → flush and start new section
-                _flush_bn(buf, current_section, page_num)
-                buf = ""
-                current_section = sec_match.group(1).strip()
-                buf = line + "\n"
+                new_sec = sec_match.group(1).strip()
+                new_depth = new_sec.count('.')
+                if new_depth >= 2 and current_section:
+                    # e.g. ১.৬.১ inside ১.৬ — accumulate into parent chunk so
+                    # the full definition (header + all criteria) stays together.
+                    buf += line + "\n"
+                    if len(buf) > _max_bn:
+                        _flush_bn(buf, current_section, page_num)
+                        buf = ""
+                else:
+                    # Single-dot section (১.৬) — flush previous and start new chunk.
+                    _flush_bn(buf, current_section, page_num)
+                    buf = ""
+                    current_section = new_sec
+                    buf = line + "\n"
 
             elif top_match:
                 # Top-level section (১., ২., ০৩.) → update chapter context
@@ -1217,13 +1555,18 @@ def _chunk_circular_bn(file_path: str) -> list:
                 buf = line + "\n"
 
             elif clause_match:
-                # Each clause letter (ক), খ), …) starts a new retrievable chunk
-                _flush_bn(buf, current_section, page_num)
-                buf = line + "\n"
+                # Start a new chunk per clause letter only when the current buffer
+                # is already substantial — short buffers are accumulated with their
+                # parent section to avoid tiny chunks in dense Master Circulars.
+                if len(buf.strip()) >= 400:
+                    _flush_bn(buf, current_section, page_num)
+                    buf = line + "\n"
+                else:
+                    buf += line + "\n"
 
             else:
                 buf += line + "\n"
-                if len(buf) > MAX_BN_CHARS:
+                if len(buf) > _max_bn:
                     _flush_bn(buf, current_section, page_num)
                     buf = ""
 
@@ -1232,6 +1575,9 @@ def _chunk_circular_bn(file_path: str) -> list:
 
     if buf.strip():
         _flush_bn(buf, current_section, last_page)
+
+    if _vision_tables:
+        chunks += _build_vision_chunks(_vision_tables, heading_info, circular_ref)
 
     return chunks
 

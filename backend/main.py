@@ -1,3 +1,9 @@
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+)
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,7 +45,11 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS chapter TEXT",
                 "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS section TEXT",
                 "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS page_num INTEGER",
+                "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS subject TEXT",
+                "ALTER TABLE document ADD COLUMN IF NOT EXISTS subject TEXT",
+                "ALTER TABLE document ADD COLUMN IF NOT EXISTS published_date DATE",
                 "ALTER TABLE document ADD COLUMN IF NOT EXISTS chunk_strategy VARCHAR(20)",
+                "ALTER TABLE message ADD COLUMN IF NOT EXISTS sources TEXT",
             ]:
                 conn.execute(text(col_ddl))
             try:

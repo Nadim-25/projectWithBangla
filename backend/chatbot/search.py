@@ -31,18 +31,19 @@ def _run_search(
 
     lang_filter = ""
     if bengali_only:
-        lang_filter = """
-            AND (
-                e.chunk_type IN ('circular_section', 'circular_narrative', 'circular_page')
-                OR e.content ~ '[ঀ-৿]'
-            )
-        """
+        # Content-based only: require actual Bengali characters in the chunk text.
+        # The old chunk_type IN (...) OR condition incorrectly included English
+        # circular pages (chunk_type='circular_page') in Bengali search results,
+        # causing them to be labeled [Bengali Circular] and answered in Bengali.
+        lang_filter = "AND e.content ~ '[ঀ-৿]'"
     elif english_only:
         lang_filter = "AND e.content !~ '[ঀ-৿]'"
 
     result = session.exec(
         text(f"""
-            SELECT e.content, e.chapter, e.page_num, d."displayName"
+            SELECT e.content, e.chapter, e.page_num, d."displayName", d.id, e.chunk_type,
+                   COALESCE(NULLIF(e.subject,''), d.subject, '') AS subject,
+                   d.chunk_strategy
             FROM embeddings e
             JOIN document d ON e.document_id = d.id
             WHERE d."userId" = :user_id
@@ -53,7 +54,16 @@ def _run_search(
         params=params,
     )
     return [
-        {"content": row[0], "chapter": row[1] or "", "page_num": row[2], "display_name": row[3] or ""}
+        {
+            "content": row[0],
+            "chapter": row[1] or "",
+            "page_num": row[2],
+            "display_name": row[3] or "",
+            "document_id": row[4],
+            "chunk_type": row[5] or "",
+            "subject": row[6] or "",
+            "doc_strategy": row[7] or "",
+        }
         for row in result.fetchall()
     ]
 
@@ -88,12 +98,14 @@ def _keyword_search_bn(
         try:
             rows = session.exec(
                 text("""
-                    SELECT e.content, e.chapter, e.page_num, d."displayName"
+                    SELECT e.content, e.chapter, e.page_num, d."displayName", d.id, e.chunk_type,
+                           COALESCE(NULLIF(e.subject,''), d.subject, '') AS subject,
+                           d.chunk_strategy
                     FROM embeddings e
                     JOIN document d ON e.document_id = d.id
                     WHERE d."userId" = :user_id
                       AND (
-                        e.chunk_type IN ('circular_section', 'circular_narrative', 'circular_page')
+                        e.chunk_type IN ('circular_section', 'circular_narrative', 'circular_page', 'table_vision')
                         OR e.content ~ '[ঀ-৿]'
                       )
                       AND e.content ILIKE :term
@@ -105,7 +117,7 @@ def _keyword_search_bn(
             for row in rows.fetchall():
                 if row[0] not in seen:
                     seen.add(row[0])
-                    results.append({"content": row[0], "chapter": row[1] or "", "page_num": row[2], "display_name": row[3] or ""})
+                    results.append({"content": row[0], "chapter": row[1] or "", "page_num": row[2], "display_name": row[3] or "", "document_id": row[4], "chunk_type": row[5] or "", "subject": row[6] or "", "doc_strategy": row[7] or ""})
         except Exception:
             pass
 
@@ -116,45 +128,64 @@ def _keyword_search_bn(
     if results:
         return results[:limit]
 
-    # Phase 2: single OR query across all unique words (≥ 3 chars).
-    # OCR often garbles conjuncts (্) so conjunct-heavy words may not match,
-    # but simple words like 'নারী' will — and ORDER BY section ensures the
-    # definitional section (১.৬) appears before later usage sections.
-    unique_words = list(dict.fromkeys(w for w in words if len(w) >= 3))[:8]
+    # Phase 2: per-word search with multi-word scoring.
+    #
+    # The old single OR query sorted by section ASC which caused page-wise
+    # chunks (section='') from other documents to rank first, crowding out
+    # the actually relevant section-based chunk. Instead, run one query per
+    # unique word and count how many query words each chunk matches — a chunk
+    # matching 4/5 query words almost certainly has the answer, while a chunk
+    # matching 1/5 is an incidental hit. OCR errors are tolerated because
+    # well-OCR'd words (e.g. 'মাঝারি', 'সর্বোচ্চ', 'বিনিয়োগ') still match
+    # even when garbled words (e.g. 'ঝণ' for 'ঋণ') miss.
+    unique_words = list(dict.fromkeys(w for w in words if len(w) >= 4))[:8]
     if not unique_words:
         return []
 
-    conditions = " OR ".join(f"e.content ILIKE :w{i}" for i in range(len(unique_words)))
-    or_params: dict = {"user_id": user_id, "limit": limit}
-    for i, w in enumerate(unique_words):
-        or_params[f"w{i}"] = f"%{w}%"
+    hit_scores: dict[str, int] = {}      # content → number of matching words
+    hit_data: dict[str, dict] = {}        # content → row data
 
-    try:
-        # Note: no DISTINCT here — dedup is handled by `seen`.
-        # DISTINCT + ORDER BY non-selected column is a PostgreSQL error.
-        rows = session.exec(
-            text(f"""
-                SELECT e.section, e.content, e.chapter, e.page_num, d."displayName"
-                FROM embeddings e
-                JOIN document d ON e.document_id = d.id
-                WHERE d."userId" = :user_id
-                  AND (
-                    e.chunk_type IN ('circular_section', 'circular_narrative', 'circular_page')
-                    OR e.content ~ '[ঀ-৿]'
-                  )
-                  AND ({conditions})
-                ORDER BY e.section
-                LIMIT :limit
-            """),
-            params=or_params,
-        )
-        for row in rows.fetchall():
-            content = row[1]
-            if content not in seen:
-                seen.add(content)
-                results.append({"content": content, "chapter": row[2] or "", "page_num": row[3], "display_name": row[4] or ""})
-    except Exception:
-        session.rollback()
+    for word in unique_words:
+        try:
+            rows = session.exec(
+                text("""
+                    SELECT e.content, e.chapter, e.page_num, d."displayName", d.id, e.chunk_type,
+                           COALESCE(NULLIF(e.subject,''), d.subject, '') AS subject,
+                           d.chunk_strategy
+                    FROM embeddings e
+                    JOIN document d ON e.document_id = d.id
+                    WHERE d."userId" = :user_id
+                      AND (
+                        e.chunk_type IN ('circular_section', 'circular_narrative', 'circular_page', 'table_vision')
+                        OR e.content ~ '[ঀ-৿]'
+                      )
+                      AND e.content ILIKE :term
+                    LIMIT 20
+                """),
+                params={"user_id": user_id, "term": f"%{word}%"},
+            )
+            for row in rows.fetchall():
+                c = row[0]
+                hit_scores[c] = hit_scores.get(c, 0) + 1
+                if c not in hit_data:
+                    hit_data[c] = {
+                        "content": c,
+                        "chapter": row[1] or "",
+                        "page_num": row[2],
+                        "display_name": row[3] or "",
+                        "document_id": row[4],
+                        "chunk_type": row[5] or "",
+                        "subject": row[6] or "",
+                        "doc_strategy": row[7] or "",
+                    }
+        except Exception:
+            session.rollback()
+
+    # Return chunks ordered by score (most matching query words first)
+    for content in sorted(hit_scores, key=lambda c: -hit_scores[c]):
+        if content not in seen:
+            seen.add(content)
+            results.append(hit_data[content])
 
     return results[:limit]
 
@@ -195,16 +226,33 @@ def search_bilingual(
     bn_results = _run_search(session, bn_embedding, user_id, per_lang, bengali_only=True)
     en_results = _run_search(session, en_embedding, user_id, per_lang, english_only=True)
 
-    # Keyword supplement: at most 2 results so they don't crowd out English.
-    # These are placed first so definitional sections (১.৬) get seen by the LLM
-    # even when vector similarity ranks them below the top per_lang results.
-    kw_results = _keyword_search_bn(session, bn_query_text, user_id, limit=2) if bn_query_text else []
+    # Keyword supplement: at most 4 results — keyword matching is more reliable
+    # than vector similarity for table data and specific values (e.g. loan limits).
+    # Placed first so definitional/tabular sections get seen by the LLM even when
+    # vector similarity ranks them below the top per_lang results.
+    kw_results = _keyword_search_bn(session, bn_query_text, user_id, limit=4) if bn_query_text else []
+
+    # Guarantee at least half the slots for English results.
+    # Without this, keyword (up to 4) + Bengali vector (per_lang) fill the
+    # list first, leaving only 2 English slots — English-only circulars get
+    # crowded out and the LLM says "not found" for valid English questions.
+    en_min = limit // 2  # 6 for limit=12
 
     seen: set[str] = set()
     merged: list[dict] = []
 
-    # Fill keyword slots first (max 2), then Bengali vector, then English
-    for chunk in kw_results[:2] + bn_results + en_results:
+    # 1. Fill English up to en_min guaranteed slots
+    for chunk in en_results:
+        if len(merged) >= en_min:
+            break
+        if chunk["content"] not in seen:
+            seen.add(chunk["content"])
+            merged.append(chunk)
+
+    # 2. Fill keyword + Bengali vector in remaining slots
+    for chunk in kw_results[:4] + bn_results:
+        if len(merged) >= limit:
+            break
         if chunk["content"] not in seen:
             seen.add(chunk["content"])
             merged.append(chunk)
@@ -229,7 +277,7 @@ def user_has_bengali_docs(session: Session, user_id: int) -> bool:
                 JOIN document d ON e.document_id = d.id
                 WHERE d."userId" = :user_id
                   AND (
-                    e.chunk_type IN ('circular_section', 'circular_narrative', 'circular_page')
+                    e.chunk_type IN ('circular_section', 'circular_narrative', 'circular_page', 'table_vision')
                     OR e.content ~ '[ঀ-৿]'
                   )
                 LIMIT 1

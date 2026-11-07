@@ -3,7 +3,7 @@ import magic
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status
 from typing import Optional
 from sqlmodel import Session, select
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from utils.database import get_database
 from utils.storage import upload_file, delete_file
 from chatbot.model import Document, CHUNK_STRATEGIES
@@ -55,6 +55,8 @@ async def upload_file_endpoint(
     division: str = Form(...),
     department: str = Form(...),
     chunk_strategy: Optional[str] = Form(None),
+    subject: Optional[str] = Form(None),
+    published_date: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_database),
 ):
@@ -77,6 +79,13 @@ async def upload_file_endpoint(
         # Treat "auto" selection same as None (let chunker decide)
         resolved_strategy = None if chunk_strategy in (None, "auto") else chunk_strategy
 
+        parsed_pub_date = None
+        if published_date:
+            try:
+                parsed_pub_date = date.fromisoformat(published_date)
+            except ValueError:
+                pass
+
         new_doc = Document(
             userId=current_user.id,
             division=division,
@@ -87,6 +96,8 @@ async def upload_file_endpoint(
             processed=False,
             fileExt=ext,
             chunk_strategy=resolved_strategy,
+            subject=subject or None,
+            published_date=parsed_pub_date,
             createdAt=datetime.now(timezone.utc),
         )
 
@@ -101,6 +112,47 @@ async def upload_file_endpoint(
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+# =========================
+# UPDATE METADATA
+# =========================
+@upload_router.patch("/{document_id}")
+async def update_document(
+    document_id: int,
+    displayName: str = Form(...),
+    division: Optional[str] = Form(None),
+    department: Optional[str] = Form(None),
+    subject: Optional[str] = Form(None),
+    published_date: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_database),
+):
+    doc = session.exec(
+        select(Document).where(
+            Document.id == document_id,
+            Document.userId == current_user.id,
+        )
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    doc.displayName = displayName
+    if division is not None:
+        doc.division = division
+    if department is not None:
+        doc.department = department
+    doc.subject = subject or None
+    if published_date is not None:
+        try:
+            doc.published_date = date.fromisoformat(published_date) if published_date else None
+        except ValueError:
+            pass
+    session.add(doc)
+    session.commit()
+
+    return {"message": "Document updated", "id": doc.id}
 
 
 # =========================
@@ -172,6 +224,31 @@ def getAllDocs(
     current_user: User = Depends(get_current_user),
 ):
     docs = session.exec(
-        select(Document).where(Document.userId == current_user.id)
+        select(Document)
+        .where(Document.userId == current_user.id)
+        .order_by(Document.published_date.desc().nullslast(), Document.createdAt.desc())
+    ).all()
+    return docs
+
+
+# =========================
+# GET RECENT CIRCULARS
+# =========================
+@upload_router.get("/recent", response_model=list[DocumentResponse])
+def get_recent_circulars(
+    days: int = 15,
+    session: Session = Depends(get_database),
+    current_user: User = Depends(get_current_user),
+):
+    """Return documents whose published_date is within the last `days` days."""
+    cutoff = date.today() - timedelta(days=days)
+    docs = session.exec(
+        select(Document)
+        .where(
+            Document.userId == current_user.id,
+            Document.published_date != None,
+            Document.published_date >= cutoff,
+        )
+        .order_by(Document.published_date.desc())
     ).all()
     return docs
